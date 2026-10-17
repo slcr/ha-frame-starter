@@ -1,0 +1,917 @@
+# button-card templates for the Frame dashboard.
+#
+# `frame` is the base: your household (people, calendars, weather) and the helpers (fx) from
+# www/frame/frame.js. Every module inherits from it and renders its HTML into the custom field `body`.
+# Styles live in www/frame/frame.css, loaded once and shared by all cards.
+#
+# Modules (docs/modules.md has every option):
+#   frame_rail      navigation rail (left on tablets, top bar on phones)
+#   frame_clock     big clock with date
+#   frame_weather   current weather, hourly strip, what to wear
+#   frame_people    who is home
+#   frame_next      next calendar event with countdown
+#   frame_agenda    next 7 days
+#   frame_heading   section heading
+#   frame_scene     scene/script button with state ("2 of 3 on", "last run ...")
+#   frame_light     light tile: tap toggles, drag dims, hold for details; one light, a group or a whole area
+#   frame_cover     cover slider: drag or tap to set position
+#   frame_lock      lock with door sensor and battery warning
+#   frame_openings  open windows and doors
+#   frame_rooms     temperature/humidity tiles with 24 h sparklines
+#   frame_stats     big numbers (energy, air quality, anything numeric)
+#   frame_setup     onboarding: checks your install, finds missing entities, writes YAML for you
+
+frame:
+  show_name: false
+  show_icon: false
+  show_state: false
+  show_label: false
+  show_ripple: false
+  tap_action:
+    action: none
+  hold_action:
+    action: none
+  double_tap_action:
+    action: none
+  variables:
+    # ------------------------------------------------------------------ YOUR HOUSEHOLD
+    # The Setup page writes these lists for you from what it finds in Home Assistant.
+    # id: short name used by calendars; color/ink: avatar and event colours.
+    people:
+      - id: alex
+        name: Alex
+        person: person.alex
+        color: "#7A2DFF"
+        ink: "#FFFFFF"
+      - id: sam
+        name: Sam
+        person: person.sam
+        color: "#00A36C"
+        ink: "#FFFFFF"
+      - id: robin
+        name: Robin
+        person: person.robin
+        color: "#2D5BFF"
+        ink: "#FFFFFF"
+      - id: kim
+        name: Kim
+        person: person.kim
+        color: "#FFB000"
+        ink: "#111111"
+    # Events from calendars that belong to nobody in particular
+    family:
+      id: family
+      name: Everyone
+      color: "#D62F6E"
+      ink: "#FFFFFF"
+      icon: mdi:star
+    # Calendars shown in frame_next and frame_agenda. who: a person id, family, or a category id
+    calendars:
+      - entity: calendar.family
+        who: family
+      - entity: calendar.alex
+        who: alex
+      - entity: calendar.sam
+        who: sam
+      - entity: calendar.robin
+        who: robin
+      - entity: calendar.kim
+        who: kim
+    # More calendar colours without a person (holidays, birthdays ...)
+    categories: []
+    weather: weather.home
+    # Travel time in seconds for covers that do not report their position while moving
+    # (e.g. cover.living_room_blind: 25). The slider estimates the position on the way.
+    cover_travel: {}
+    # Translate or reword any UI string; keys are listed at the top of www/frame/frame.js (TEXT)
+    text: {}
+    # ------------------------------------------------------------------
+    # Helpers for all cards (www/frame/frame.js), parsed once per page instead of on every render
+    fx: "[[[ return window.frame && window.frame.fx.call(this, states, hass, variables); ]]]"
+  styles:
+    card:
+      - padding: 0
+      - background: none
+      - box-shadow: none
+      - border: none
+      - border-radius: 0
+      - height: 100%
+      - overflow: visible
+    grid:
+      - grid-template-areas: '"body"'
+      - grid-template-columns: 1fr
+      - grid-template-rows: 1fr
+      - height: 100%
+    custom_fields:
+      body:
+        - height: 100%
+        - width: 100%
+        - min-width: 0
+        - white-space: normal
+        - overflow: hidden
+        - text-overflow: clip
+        - text-align: left
+        - justify-self: stretch
+
+# ----------------------------------------------------------------------- navigation
+
+# Rail on the left (tablet) or a sticky bar at the top (phone, under 768 px). pages: the views of this
+# dashboard, path = the view's `path`. The current page is highlighted. Tap the clock for HA settings.
+frame_rail:
+  template: frame
+  update_timer: 30s
+  variables:
+    pages:
+      - path: home
+        label: Home
+        icon: mdi:view-dashboard-outline
+      - path: house
+        label: House
+        icon: mdi:home-outline
+      - path: setup
+        label: Setup
+        icon: mdi:tune-variant
+  styles:
+    card:
+      - background: var(--frame-paper, #F2EEE6)
+      - border-right: 2px solid var(--frame-ink, #111111)
+      - box-sizing: border-box
+      - height: 100vh
+  extra_styles: |
+    @media (max-width: 767px) {
+      :host { position: fixed !important; top: 0; left: 0; right: 0; z-index: 10; }
+      ha-card {
+        height: calc(var(--frame-rail-h, 56px) + env(safe-area-inset-top, 0px)) !important;
+        padding-top: env(safe-area-inset-top, 0px) !important;
+        border-right: 0 !important; border-bottom: 2px solid #111111 !important;
+      }
+    }
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const cur = variables.active || location.pathname.split('/')[2] || variables.pages[0].path;
+        const d = new Date(), c = fx.clock(d);
+        const items = variables.pages.map((p) => `<button class="nav${p.path === cur ? ' is-on' : ''}" onpointerup="__frameGo('${fx.esc(p.path)}')">
+          <ha-icon icon="${p.icon}"></ha-icon><span>${fx.esc(p.label)}</span></button>`).join('');
+        // admins land in Settings, everyone else in their profile
+        const target = user && user.is_admin ? '/config/dashboard' : '/profile';
+        return `<nav class="rail">${items}<span class="rail-gap"></span>
+          <div class="rail-clock" role="button" onpointerup="location.href = '${target}'"><b class="num">${c.hm}</b>
+          <span>${fx.weekday(d, 'short')} ${d.getDate()}</span></div></nav>`;
+      ]]]
+
+# ----------------------------------------------------------------------- today
+
+frame_clock:
+  template: frame
+  update_timer: 10s
+  styles:
+    custom_fields:
+      body:
+        - overflow: visible
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const d = new Date(), c = fx.clock(d);
+        return `<div class="clk">
+          <div class="clk-time num">${c.hm}${c.ampm ? `<small>${c.ampm}</small>` : ''}</div>
+          <div class="clk-date"><b>${fx.weekday(d)}</b>${fx.dateLong(d)}</div>
+        </div>`;
+      ]]]
+
+# Current weather, today's high/low, the next 12 hours in 2-hour steps (temperature line and rain
+# bars behind) and a one-line hint what to wear. Needs a weather entity with an hourly forecast
+# (Met.no, OpenWeatherMap, Pirate Weather, ...). entity: defaults to `weather` from the base.
+frame_weather:
+  template: frame
+  update_timer: 5min
+  variables:
+    # temperature thresholds for the clothing hint (highest temperature in the next 12 hours)
+    coat_below: 8
+    jacket_below: 15
+    sweater_below: 21
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const id = entity ? entity.entity_id : variables.weather;
+        const cur = states[id];
+        if (!cur) return `<div class="wx"><div class="free"><i>${fx.t('weather_na')}</i> · ${fx.esc(id)}</div></div>`;
+        const ICON = { 'clear-night': 'mdi:weather-night', cloudy: 'mdi:weather-cloudy', exceptional: 'mdi:alert-circle-outline',
+          fog: 'mdi:weather-fog', hail: 'mdi:weather-hail', lightning: 'mdi:weather-lightning', 'lightning-rainy': 'mdi:weather-lightning-rainy',
+          partlycloudy: 'mdi:weather-partly-cloudy', pouring: 'mdi:weather-pouring', rainy: 'mdi:weather-rainy', snowy: 'mdi:weather-snowy',
+          'snowy-rainy': 'mdi:weather-snowy-rainy', sunny: 'mdi:weather-sunny', windy: 'mdi:weather-windy', 'windy-variant': 'mdi:weather-windy-variant' };
+        // worse weather wins when two hours share a slot
+        const RANK = ['clear-night', 'sunny', 'partlycloudy', 'cloudy', 'fog', 'windy', 'windy-variant', 'rainy', 'snowy-rainy', 'snowy',
+          'hail', 'pouring', 'lightning', 'lightning-rainy', 'exceptional'];
+        const night = states['sun.sun'] && states['sun.sun'].state === 'below_horizon';
+        const icon = (c, isNight) => (c === 'partlycloudy' && isNight ? 'mdi:weather-night-partly-cloudy' : c === 'sunny' && isNight ? 'mdi:weather-night' : ICON[c] || 'mdi:weather-cloudy');
+        const r = (v) => (v == null ? null : Math.round(v));
+        const now = Date.now();
+        const hours = fx.forecast(id, 'hourly').map((x) => ({ t: new Date(x.datetime), temp: x.temperature, cond: x.condition,
+          pop: x.precipitation_probability || 0, mm: x.precipitation || 0, feel: x.apparent_temperature, wind: x.wind_speed }))
+          .filter((x) => x.t.getTime() > now - 3600000);
+        const daily = fx.forecast(id, 'daily');
+        const wet = (x) => /rain|pour|snow|hail|lightning/.test(x.cond || '') || x.pop >= 50 || x.mm >= 0.3;
+
+        const temp = r(cur.attributes.temperature);
+        const next24 = hours.slice(0, 24);
+        const hi = daily.length ? r(daily[0].temperature) : next24.length ? r(Math.max(...next24.map((x) => x.temp))) : null;
+        const lo = daily.length && daily[0].templow != null ? r(daily[0].templow) : next24.length ? r(Math.min(...next24.map((x) => x.temp))) : null;
+        const feel = r(cur.attributes.apparent_temperature != null ? cur.attributes.apparent_temperature : hours.length ? hours[0].feel : null);
+
+        // what to wear: highest temperature of the next 12 hours, rain on top
+        const next12 = hours.slice(0, 12);
+        let say = '', extra = '';
+        if (next12.length) {
+          const max = Math.max(...next12.map((x) => x.temp));
+          say = fx.t(max < variables.coat_below ? 'wear_coat' : max < variables.jacket_below ? 'wear_jacket' : max < variables.sweater_below ? 'wear_sweater' : 'wear_tshirt');
+          const firstWet = next12.find(wet);
+          if (firstWet && firstWet === next12[0]) {
+            const dry = next12.find((x) => !wet(x));
+            extra = dry ? fx.t('rain_now', fx.hourLabel(dry.t)) : fx.t('wear_umbrella');
+          } else if (firstWet) extra = fx.t('rain_from', fx.hourLabel(firstWet.t));
+        }
+
+        // six slots of two hours; icon and rain over both hours so a shower between slots does not vanish
+        const slots = [], pts = [];
+        for (let i = 1; i + 1 < hours.length && slots.length < 6; i += 2) {
+          const a = hours[i], b = hours[i + 1];
+          const cond = RANK.indexOf(b.cond) > RANK.indexOf(a.cond) ? b.cond : a.cond;
+          const pop = [a, b].filter(wet).reduce((m, x) => Math.max(m, x.pop || 0), 0);
+          const isWet = wet(a) || wet(b);
+          const isNight = b.t.getHours() >= 21 || b.t.getHours() < 6;
+          pts.push({ temp: b.temp, pop: isWet ? pop : 0 });
+          slots.push(`<div class="wx-d${isWet ? ' is-wet' : ''}"><span>${fx.hourLabel(b.t)}</span>
+            <ha-icon icon="${icon(cond, isNight)}"></ha-icon><b>${r(b.temp)}°</b>
+            <small>${isWet && pop ? `${pop}%` : '&nbsp;'}</small></div>`);
+        }
+        // temperature line through the slot centres, rain probability as bars behind
+        let graph = '';
+        if (pts.length >= 2) {
+          const W = 6 * 20, H = 30, cx = (k) => (k + 0.5) * 20;
+          const ts = pts.map((p) => p.temp), tmin = Math.min(...ts), tmax = Math.max(...ts);
+          const span = Math.max(8, tmax - tmin), tlo = (tmax + tmin) / 2 - span / 2;
+          const ty = (v) => 3 + (1 - (v - tlo) / span) * (H - 8);
+          const bars = pts.map((p, k) => (p.pop ? `<rect${p.pop >= 50 ? ' class="is-wet"' : ''} x="${cx(k) - 4}" y="${(H * (1 - p.pop / 100)).toFixed(1)}" width="8" height="${(H * p.pop / 100).toFixed(1)}" rx="1"/>` : '')).join('');
+          const f2 = (v) => v.toFixed(2);
+          const P = [[0, ty(pts[0].temp)], ...pts.map((p, k) => [cx(k), ty(p.temp)]), [W, ty(pts[pts.length - 1].temp)]];
+          let d = `M${f2(P[0][0])},${f2(P[0][1])}`;
+          for (let i = 0; i < P.length - 1; i++) {
+            const a = P[i - 1] || P[i], b = P[i], c = P[i + 1], e = P[i + 2] || c;
+            d += ` C${f2(b[0] + (c[0] - a[0]) / 6)},${f2(b[1] + (c[1] - a[1]) / 6)} ${f2(c[0] - (e[0] - b[0]) / 6)},${f2(c[1] - (e[1] - b[1]) / 6)} ${f2(c[0])},${f2(c[1])}`;
+          }
+          graph = `<svg class="wx-graph" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+            <path class="wx-tarea" d="${d} L${W},${H} L0,${H} Z"/><g class="wx-rain">${bars}</g><path class="wx-tline" d="${d}"/></svg>`;
+        }
+        return `<div class="wx">
+          <div class="wx-top">
+            <span class="wx-temp num">${temp != null ? temp + '°' : '–'}</span>
+            <span class="wx-meta"><b><ha-icon icon="${icon(cur.state, night)}"></ha-icon>${fx.esc(fx.fmt(id))}</b>
+              ${hi != null ? `<span>${fx.t('high')} ${hi}°${lo != null ? ` · ${fx.t('low')} ${lo}°` : ''}</span>` : ''}
+              ${feel != null ? `<span>${fx.t('feels')} ${feel}°</span>` : ''}</span>
+            <div class="wx-say">${say ? `<i>${say}</i>` : ''}${extra ? `<span>${extra}</span>` : ''}</div>
+          </div>
+          ${slots.length ? `<div class="wx-days">${graph}${slots.join('')}</div>` : `<div class="label">${fx.t('forecast_na')}</div>`}
+        </div>`;
+      ]]]
+
+# Who is home: everyone from `people` that has a `person` entity. Away = ring avatar and the zone.
+frame_people:
+  template: frame
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const rows = fx.people.filter((p) => p.person).map((p) => {
+          const s = states[p.person];
+          const home = !!s && s.state === 'home';
+          const text = !s ? fx.t('unknown') : fx.fmt(p.person);
+          return `<div class="who-row${home ? ' is-home' : ''}">${fx.avatar(p, 34, !home)}<b>${fx.esc(p.name)}</b><small>${fx.esc(text)}</small></div>`;
+        }).join('');
+        return `<div class="who">${rows}</div>`;
+      ]]]
+
+# The next event from your calendars in the colour of its person, with a big countdown
+# (minutes until it starts, or minutes left while it runs). Today's all-day events as chips at the bottom.
+frame_next:
+  template: frame
+  update_timer: 30s
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const now = new Date(), all = fx.agenda(7);
+        const next = all.find((e) => !e.all_day && e.to > now);
+        const allDay = all.filter((e) => e.all_day && e.from <= now && e.to > now);
+        const foot = allDay.length ? `<div class="hero-foot"><span class="label">${fx.t('today_all_day')}</span>
+          ${allDay.map((e) => `<span class="hero-ad"><i style="${fx.pstyle(fx.person(e.who))}"></i>${fx.esc(e.title)}</span>`).join('')}</div>` : '';
+        if (!next) {
+          return `<div class="hero hero--empty"><div class="label">${fx.t('next_7_days')}</div>
+            <div class="hero-title">${fx.t('nothing_planned')}<br><i>${fx.t('enjoy')}</i></div>${foot}</div>`;
+        }
+        const p = fx.person(next.who);
+        const running = next.from <= now;
+        const today = fx.dayDiff(next.from, now) === 0;
+        const mins = Math.round((next.from - now) / 60000), left = Math.round((next.to - now) / 60000);
+        const big = running
+          ? left < 100 ? `${left}<small>${fx.t('min_left')}</small>` : `${fx.time(next.to)}<small>${fx.t('until_time')}</small>`
+          : today && mins < 100 ? `${mins}<small>${fx.t('min')}</small>`
+          : `${fx.time(next.from)}<small>${today ? fx.t('today') : fx.dayLabel(next.from, now)}</small>`;
+        return `<div class="hero${foot ? ' hero--foot' : ''}" style="${fx.pstyle(p)}">
+          <div class="hero-main">
+            <div class="label">${running ? fx.t('happening') : fx.t('up_next')} · ${fx.esc(p.name)}</div>
+            <div class="hero-title">${fx.esc(next.title)}</div>
+            <div class="hero-meta">${fx.time(next.from)}–${fx.time(next.to)}${next.loc ? ' · ' + fx.esc(next.loc) : ''}</div>
+          </div>
+          <div class="hero-count num">${big}</div>
+          ${foot}
+        </div>`;
+      ]]]
+
+# The next 7 days, grouped by day. max: how many events at most (the list fades out at the bottom).
+frame_agenda:
+  template: frame
+  update_timer: 60s
+  variables:
+    max: 14
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const now = new Date(), all = fx.agenda(7);
+        const blocks = [];
+        let rows = 0;
+        for (let i = 0; i < 7 && rows < variables.max; i++) {
+          const d0 = fx.day0(now, i), d1 = fx.day0(now, i + 1);
+          // multi-day events only on the first visible day, with "until ..."
+          const allDay = all.filter((e) => e.all_day && e.from < d1 && e.to > d0 && (i === 0 || e.from >= d0));
+          const timed = all.filter((e) => !e.all_day && e.from >= d0 && e.from < d1 && e.to > now);
+          const items = allDay.concat(timed).slice(0, variables.max - rows);
+          if (!items.length) continue;
+          rows += items.length;
+          const list = items.map((e) => {
+            const p = fx.person(e.who), cur = !e.all_day && e.from <= now;
+            const until = e.all_day && e.to > d1 ? `<small>${fx.t('until', `${fx.weekday(fx.day0(e.to, -1), 'short')} ${fx.dateShort(fx.day0(e.to, -1))}`)}</small>` : '';
+            return `<div class="wk-ev${cur ? ' is-now' : ''}">
+              <span class="ev-t">${e.all_day ? fx.t('all_day') : cur ? fx.t('now') : fx.time(e.from)}</span>
+              ${fx.avatar(p, 26)}
+              <span class="wk-t">${fx.esc(e.title)}${e.loc ? `<small>${fx.esc(e.loc)}</small>` : ''}${until}</span>
+            </div>`;
+          }).join('');
+          blocks.push(`<div class="wk-day"><div class="wk-head"><b>${fx.dayLabel(d0, now)}</b><span>${fx.dateLong(d0)}</span></div>${list}</div>`);
+        }
+        if (!blocks.length) return `<div class="wk"><div class="free"><i>${fx.t('no_events')}</i> ${fx.t('no_events_sub')}</div></div>`;
+        return `<div class="wk">${blocks.join('')}<div class="wk-fade"></div></div>`;
+      ]]]
+
+# ----------------------------------------------------------------------- building blocks
+
+frame_heading:
+  template: frame
+  variables:
+    title: Section
+    sub: ""
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        return `<div class="sec"><b>${fx.esc(variables.title)}</b>${variables.sub ? `<span>${fx.esc(variables.sub)}</span>` : ''}</div>`;
+      ]]]
+
+# Scene or script as a tile; tap runs it. entity: scene.* or script.*
+#   kind: scene        sub line "last run ..." (or your own `sub`)
+#         on           active (dark) when all `lights` are on, else "2 of 3 on"
+#         off          active when all `lights` are off, else "3 on"
+#         open / close active when all `covers` are open / closed
+frame_scene:
+  template: frame
+  tap_action:
+    action: perform-action
+    perform_action: "[[[ return entity && entity.entity_id.startsWith('scene.') ? 'scene.turn_on' : 'script.turn_on'; ]]]"
+    target:
+      entity_id: "[[[ return entity ? entity.entity_id : 'none'; ]]]"
+  variables:
+    name: Scene
+    icon: mdi:palette-outline
+    kind: scene
+    sub: ""
+    lights: []
+    covers: []
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const k = variables.kind;
+        const isOn = (id) => { const l = fx.lit(id); return !!(l && l.on); };
+        let sub = variables.sub, active = false;
+        if (k === 'on' || k === 'off') {
+          const n = variables.lights.filter(isOn).length, all = variables.lights.length;
+          active = k === 'on' ? all > 0 && n === all : n === 0;
+          sub = k === 'on' ? (n === 0 || active ? sub : fx.t('n_of_m_on', n, all)) : (active ? fx.t('all_off') : fx.t('lights_on', n));
+        } else if (k === 'open' || k === 'close') {
+          const cs = variables.covers.map((id) => states[id]).filter(Boolean);
+          const open = cs.filter((s) => s.state !== 'closed' && s.state !== 'unavailable').length;
+          const moving = cs.some((s) => s.state === 'opening' || s.state === 'closing');
+          active = k === 'open' ? open === cs.length : open === 0;
+          sub = moving ? fx.t(cs.some((s) => s.state === 'opening') ? 'opening' : 'closing') + ' …'
+            : k === 'open' ? (active ? fx.t('all_open') : fx.t('n_of_m_open', open, cs.length))
+            : (active ? fx.t('all_closed') : fx.t('n_of_m_closed', cs.length - open, cs.length));
+        } else if (!sub && entity) {
+          const ts = entity.entity_id.startsWith('scene.') ? entity.state : entity.attributes.last_triggered;
+          const d = ts ? new Date(ts) : null;
+          sub = d && !isNaN(d) ? fx.when(d) : fx.t('never');
+        }
+        return `<div class="sc${active ? ' is-active' : ''}"><ha-icon icon="${variables.icon}"></ha-icon>
+          <b>${fx.esc(variables.name)}</b><span>${fx.esc(sub || '')}</span></div>`;
+      ]]]
+
+# Light tile in the colours of the lights that are on.
+#   Tap: on/off. Drag sideways: dim (on lights that can dim). Hold: Home Assistant's light dialog.
+#   entity: a light or a light group. Or area: an area id; then the tile controls all lights in that
+#   area (lights without an own area count by their device's area; groups, hidden and config entities don't).
+frame_light:
+  template: frame
+  variables:
+    name: Light
+    icon: mdi:lightbulb-outline
+    area: ""
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        window.__frameLight = window.__frameLight || ((ev, el) => {
+          if (ev.button > 0) return;
+          const ids = el.dataset.entity.split(','), dim = el.classList.contains('can-dim');
+          const x0 = ev.clientX, y0 = ev.clientY, label = el.querySelector('.lt-sub'), text0 = label.textContent;
+          const pct0 = el.style.getPropertyValue('--pct');
+          let mode = null, pct = null;
+          const call = (svc, data) => window.__frameHass.callService('light', svc, data || {}, { entity_id: ids });
+          const hold = setTimeout(() => {
+            if (mode) return;
+            mode = 'hold';
+            el.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId: ids[0] }, bubbles: true, composed: true }));
+          }, 550);
+          const move = (m) => {
+            const dx = m.clientX - x0, dy = m.clientY - y0;
+            if (!mode && dim && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) { mode = 'dim'; clearTimeout(hold); el.classList.add('is-dimming'); }
+            if (!mode && Math.hypot(dx, dy) > 12) { mode = 'cancel'; clearTimeout(hold); }
+            if (mode !== 'dim') return;
+            if (m.cancelable) m.preventDefault();
+            const r = el.getBoundingClientRect();
+            pct = Math.round(Math.max(0, Math.min(1, (m.clientX - r.left) / r.width)) * 100);
+            el.style.setProperty('--pct', pct + '%');
+            el.classList.toggle('is-edge', pct <= 0 || pct >= 100);
+            label.textContent = pct ? pct + ' %' : el.dataset.off;
+          };
+          const up = (u) => {
+            clearTimeout(hold);
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            window.removeEventListener('pointercancel', up);
+            el.classList.remove('is-dimming');
+            // vertical swipe: the browser scrolls and cancels -> do nothing
+            if (u.type === 'pointercancel') { el.style.setProperty('--pct', pct0); label.textContent = text0; return; }
+            if (mode === 'dim' && pct != null) {
+              (pct < 2 ? call('turn_off') : call('turn_on', { brightness_pct: pct })).catch(() => { label.textContent = text0; });
+            } else if (!mode) {
+              // explicit on/off from what the tile shows (toggle would follow the group state)
+              const wasOn = el.classList.contains('is-on');
+              el.classList.toggle('is-on');
+              call(wasOn ? 'turn_off' : 'turn_on');
+            }
+          };
+          window.addEventListener('pointermove', move, { passive: false });
+          window.addEventListener('pointerup', up);
+          window.addEventListener('pointercancel', up);
+        });
+        const ids = variables.area ? fx.areaLights(variables.area) : entity ? [entity.entity_id] : [];
+        const l = ids.length ? fx.lit(variables.area ? ids : ids[0]) : null;
+        const on = !!(l && l.on), na = !l;
+        const modes = [].concat(...ids.map((id) => (states[id] && states[id].attributes.supported_color_modes) || []));
+        const dim = !na && modes.some((m) => m !== 'onoff');
+        const pct = l ? l.pct : 0;
+        const sub = na ? fx.t('unavailable') : on ? (l.dim ? `${pct} %` : fx.t('on')) : fx.t('off');
+        // group: the members' colours; area: all its lights
+        const members = !variables.area && ids.length && states[ids[0]] && Array.isArray(states[ids[0]].attributes.entity_id)
+          ? states[ids[0]].attributes.entity_id : ids;
+        const root = this.shadowRoot, g = fx.glowStyle(members.map((id) => states[id]), root && root.querySelector('.lt'));
+        if (g.attr) { Promise.resolve().then(() => window.__frameGlowFlush(root)); requestAnimationFrame(() => window.__frameGlowFlush(root)); }
+        return `<div class="lt${on ? ' is-on' : ''}${na ? ' is-na' : ''}${dim ? ' can-dim' : ''}${pct <= 0 || pct >= 100 ? ' is-edge' : ''}" style="--pct:${pct}%;${g.style}"${g.attr}
+          ${na ? '' : `data-entity="${ids.join(',')}" data-off="${fx.t('off')}" onpointerdown="__frameLight(event,this)"`}>
+          <i class="lt-fill"></i><span class="lt-ico"><ha-icon icon="${variables.icon}"></ha-icon></span><b>${fx.esc(variables.name)}</b><span class="lt-sub">${sub}</span></div>`;
+      ]]]
+
+# Cover (or several that always move together) as a slider: left closed, right open.
+# Drag or tap sets the position (steps of 5, snaps to the ends) when you let go. Tap while moving: stop.
+# Hold: Home Assistant's cover dialog. entity or covers: [...]
+# branch: draws a line from the light tile on its left (only | first | mid | last | none)
+frame_cover:
+  template: frame
+  variables:
+    name: Blind
+    covers: []
+    branch: none
+  styles:
+    custom_fields:
+      body:
+        - overflow: visible
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        window.__frameCoverPos = window.__frameCoverPos || ((ev, el) => {
+          if (ev.button > 0) return;
+          ev.stopPropagation();
+          const ids = el.dataset.covers.split(','), val = el.querySelector('.sh-val'), text0 = val.textContent;
+          const call = (svc, data) => window.__frameHass.callService('cover', svc, Object.assign({ entity_id: ids }, data || {}));
+          const x0 = ev.clientX;
+          let pct = null, dragged = false;
+          const hold = setTimeout(() => {
+            if (dragged) return;
+            pct = 'hold';
+            el.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId: ids[0] }, bubbles: true, composed: true }));
+          }, 550);
+          const at = (x) => {
+            const r = el.getBoundingClientRect();
+            const raw = Math.max(0, Math.min(1, (x - r.left) / r.width)) * 100;
+            pct = raw < 8 ? 0 : raw > 92 ? 100 : Math.round(raw / 5) * 5;
+            el.style.setProperty('--open', pct + '%');
+            el.classList.toggle('is-edge', pct <= 0 || pct >= 100);
+            val.textContent = pct >= 100 ? el.dataset.open : pct <= 0 ? el.dataset.closed : pct + ' %';
+          };
+          const move = (m) => {
+            if (!dragged && Math.abs(m.clientX - x0) < 6) return;
+            if (!dragged) { dragged = true; clearTimeout(hold); el.classList.add('is-drag'); }
+            if (m.cancelable) m.preventDefault();
+            at(m.clientX);
+          };
+          const up = (u) => {
+            clearTimeout(hold);
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            window.removeEventListener('pointercancel', up);
+            el.classList.remove('is-drag');
+            if (pct === 'hold') return;
+            if (u.type === 'pointercancel') { val.textContent = text0; return; }
+            if (!dragged && el.classList.contains('is-moving')) { call('stop_cover'); return; }
+            if (!dragged) at(u.clientX);
+            call('set_cover_position', { position: pct }).catch(() => { val.textContent = text0; });
+          };
+          window.addEventListener('pointermove', move, { passive: false });
+          window.addEventListener('pointerup', up);
+          window.addEventListener('pointercancel', up);
+        });
+        const list = variables.covers.length ? variables.covers : entity ? [entity.entity_id] : [];
+        const ok = list.map((id) => states[id]).filter((s) => s && s.state !== 'unavailable');
+        const cp = ok.map((s) => fx.coverPos(s)), pos = cp.map((c) => c.pos);
+        const avg = pos.length ? Math.round(pos.reduce((a, b) => a + b, 0) / pos.length) : null;
+        const up = cp.some((c) => c.moving === 'opening'), down = cp.some((c) => c.moving === 'closing');
+        const lo = pos.length ? Math.min(...pos) : null, hi = pos.length ? Math.max(...pos) : null;
+        const text = avg == null ? fx.t('unavailable') : up ? `${fx.t('opening')} · ${avg} %` : down ? `${fx.t('closing')} · ${avg} %`
+          : avg >= 98 ? fx.t('open') : avg <= 2 ? fx.t('closed') : hi - lo > 10 ? `${lo}–${hi} %` : `${avg} %`;
+        // estimated travel: redraw every 0.5 s until the cover reports its real position
+        if (cp.some((c) => c.est)) {
+          const card = this;
+          clearTimeout(card.__shTick);
+          card.__shTick = setTimeout(() => { if (card.isConnected && card.requestUpdate) card.requestUpdate('_config'); }, 500);
+        }
+        const edge = avg == null || avg <= 0 || avg >= 100;
+        return `<div class="shb is-${variables.branch}"><div class="sh${!ok.length ? ' is-na' : ''}${edge ? ' is-edge' : ''}${up || down ? ' is-moving' : ''}" style="--open:${avg == null ? 0 : avg}%"
+          ${ok.length ? `data-covers="${ok.map((s) => s.entity_id).join(',')}" data-open="${fx.t('open')}" data-closed="${fx.t('closed')}" onpointerdown="__frameCoverPos(event,this)"` : ''}>
+          <i class="sh-fill"></i><ha-icon icon="${up || down ? 'mdi:stop' : 'mdi:window-shutter'}"></ha-icon>
+          <b>${fx.esc(variables.name)}</b><span class="sh-val">${text}</span></div></div>`;
+      ]]]
+
+# ----------------------------------------------------------------------- status blocks
+
+# Lock. entity: lock.*; door: binary_sensor for the door contact; battery: binary_sensor (on = low).
+# Tinted when unlocked or open. Tap: Home Assistant's lock dialog.
+frame_lock:
+  template: frame
+  variables:
+    name: ""
+    door: ""
+    battery: ""
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const st = entity ? entity.state : 'unavailable';
+        const open = variables.door && states[variables.door] && states[variables.door].state === 'on';
+        const lowBat = variables.battery && states[variables.battery] && states[variables.battery].state === 'on';
+        const locked = st === 'locked';
+        const text = open ? fx.t('door_open') : (entity && fx.fmt(entity.entity_id)) || fx.t('unavailable');
+        const icon = open ? 'mdi:door-open' : locked ? 'mdi:lock' : 'mdi:lock-open-variant';
+        const warn = open || !locked;
+        return `<div class="blk tap-zone${warn ? ' blk--warn' : ''}" data-id="${entity ? entity.entity_id : ''}" onpointerup="__frameInfo(this)"><div class="blk-row">
+          <span class="blk-ico${warn ? ' is-warn' : ' is-on'}"><ha-icon icon="${icon}"></ha-icon></span>
+          <span class="blk-main"><span class="label">${fx.esc(variables.name || fx.t('door'))}</span><span class="blk-big">${fx.esc(text)}</span></span>
+          ${lowBat ? `<span class="pill pill--warn">${fx.t('battery')}</span>` : ''}
+        </div></div>`;
+      ]]]
+
+# Open windows and doors. entities: contact sensors to watch; empty = every binary_sensor with
+# device_class door, window or garage_door. Tap: when each was opened, or today's openings when all are closed.
+frame_openings:
+  template: frame
+  update_timer: 60s
+  variables:
+    title: ""
+    entities: []
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const now = new Date();
+        // candidates from the raw states, so the card only observes the contacts themselves
+        const raw = (this._hass && this._hass.states) || hass.states;
+        const ids = variables.entities.length ? variables.entities
+          : Object.keys(raw).filter((id) => id.startsWith('binary_sensor.') && ['door', 'window', 'garage_door'].includes(raw[id].attributes.device_class));
+        const contacts = ids.map((id) => states[id]).filter(Boolean);
+        const name = (s) => String(s.attributes.friendly_name || s.entity_id);
+        const openNow = contacts.filter((s) => s.state === 'on').sort((a, b) => new Date(a.last_changed) - new Date(b.last_changed));
+        const hist = fx.changes(contacts.map((s) => s.entity_id), 24, 5);
+        const t0 = fx.day0(now).getTime(), opens = [];
+        contacts.forEach((s) => fx.runs(hist[s.entity_id], ['off']).forEach((r) => { if (r.from >= t0) opens.push({ name: name(s), from: r.from }); }));
+        opens.sort((a, b) => b.from - a.from);
+        const n = openNow.length;
+        const more = n
+          ? fx.more(fx.t('open_since'), openNow.slice(0, 4).map((s) => [name(s), fx.when(new Date(s.last_changed), now)]))
+          : fx.more('', [[fx.t('opened_today'), `${opens.length}×`], [fx.t('last_opened'), opens[0] ? `${fx.esc(opens[0].name)} · ${fx.time(new Date(opens[0].from))}` : null]]);
+        const tap = ` tap${fx.isOpen('openings')}"${fx.tapAttr('openings')}`;
+        const title = fx.esc(variables.title || fx.t('windows_doors'));
+        if (!n) {
+          return `<div class="blk${tap}><div class="blk-row">
+            <span class="blk-ico"><ha-icon icon="mdi:window-closed-variant"></ha-icon></span>
+            <span class="blk-main"><span class="label">${title}</span><span class="blk-big">${contacts.length ? fx.t('all_closed_big') : '–'}</span></span>
+          </div>${more}</div>`;
+        }
+        return `<div class="blk blk--warn${tap}><div class="blk-row">
+            <span class="blk-ico is-warn"><ha-icon icon="mdi:window-open-variant"></ha-icon></span>
+            <span class="blk-main"><span class="label">${title}</span><span class="blk-big">${fx.t('n_open', n)}</span></span>
+          </div>
+          <div class="chips">${openNow.map((s) => `<span class="chip">${fx.esc(name(s))}<small>${fx.dur(now - new Date(s.last_changed))}</small></span>`).join('')}</div>
+          ${more}</div>`;
+      ]]]
+
+# Room climate as tiles: big temperature, humidity in blue, the last `hours` hours as a sparkline behind
+# (temperature as area, humidity as a blue line). Tap a tile for low/high/trend.
+# rooms: [{name, temp, hum?, climate?}]  climate: a climate.* entity; heating = orange frame + target temperature
+# Sensors need a state_class (measurement) so Home Assistant keeps long-term statistics.
+frame_rooms:
+  template: frame
+  update_timer: 60s
+  variables:
+    rooms: []
+    hours: 24
+    columns: 2
+    min_span: 2
+    hum_min_span: 10
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const ids = variables.rooms.flatMap((r) => [r.temp, r.hum]).filter(Boolean);
+        const history = fx.hist(ids, variables.hours, 10, 'hour', ['mean', 'min', 'max']);
+        const tiles = variables.rooms.map((r) => {
+          const t = fx.num(r.temp, 1), h = r.hum ? fx.num(r.hum, 0) : null;
+          const rows = (history[r.temp] || []).filter((x) => x.mean != null);
+          const lo = rows.reduce((a, b) => (b.min != null && (!a || b.min < a.min) ? b : a), null);
+          const hi = rows.reduce((a, b) => (b.max != null && (!a || b.max > a.max) ? b : a), null);
+          const ago = rows.length >= 3 ? rows[rows.length - 3] : null;
+          const tr = t && ago ? t.raw - ago.mean : null;
+          const at = (x) => fx.time(new Date(typeof x.start === 'number' ? x.start : Date.parse(x.start)));
+          const tStale = fx.flat(history[r.temp]), hStale = r.hum && fx.flat(history[r.hum]);
+          const c = r.climate && states[r.climate];
+          const heating = c && c.attributes.hvac_action === 'heating';
+          const target = c && c.state !== 'off' && c.attributes.temperature != null ? fx.nf(c.attributes.temperature, 1) + '°' : '';
+          const more = fx.more('', [
+            [fx.t('low_24h'), lo ? `${fx.nf(lo.min, 1)}° · ${at(lo)}` : null],
+            [fx.t('high_24h'), hi ? `${fx.nf(hi.max, 1)}° · ${at(hi)}` : null],
+            [fx.t('trend_3h'), tr != null ? `${tr > 0.05 ? '+' : tr < -0.05 ? '−' : '±'}${fx.nf(Math.abs(tr), 1)}°` : null],
+            [fx.t('target'), target || null],
+            [fx.t('stale'), tStale || hStale ? '⚠︎' : null],
+          ]);
+          const sub = [h ? `<span class="room-h">${h.v} %</span>` : '', target ? `→ ${target}` : ''].filter(Boolean).join(' · ');
+          const key = 'room:' + r.temp;
+          return `<div class="room tap${heating ? ' is-heat' : ''}${tStale ? ' is-stale' : ''}${fx.isOpen(key)}"${fx.tapAttr(key)}>${fx.spark(history[r.temp], variables.hours, {
+              now: t ? t.raw : null, minSpan: variables.min_span, unit: t ? t.unit : '', decimals: 1,
+              line2: r.hum && { rows: history[r.hum], now: h ? h.raw : null, minSpan: variables.hum_min_span, unit: '%' } })}
+            <div class="room-top"><span class="label">${fx.esc(r.name)}</span>${heating ? '<ha-icon icon="mdi:fire"></ha-icon>' : ''}</div>
+            <div class="room-t num">${t ? t.v : '–'}<small>°</small></div>
+            <div class="room-s">${sub || '&nbsp;'}</div>${more}
+          </div>`;
+        }).join('');
+        return `<div class="rooms" style="--cols:${variables.columns}">${tiles}</div>`;
+      ]]]
+
+# Big numbers. items: [{label, entity, decimals?, scale?, unit?, warn_above?, warn_below?}]
+# scale/unit convert, e.g. W -> kW: scale 0.001, unit kW. Values above/below the limits turn red.
+# Unavailable values are left out; without any value the card hides.
+frame_stats:
+  template: frame
+  hidden: "[[[ return !variables.fx || !variables.items.some((it) => variables.fx.ok(it.entity)); ]]]"
+  variables:
+    title: ""
+    cols: 3
+    items: []
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const items = variables.items.filter((it) => fx.ok(it.entity));
+        const cells = items.map((it) => {
+          let n = fx.num(it.entity, it.decimals);
+          if (n && (it.scale != null || it.unit != null)) {
+            const raw = n.raw * (it.scale == null ? 1 : it.scale);
+            n = { raw, v: fx.nf(raw, it.decimals), unit: it.unit == null ? n.unit : it.unit };
+          }
+          const warn = n && ((it.warn_above != null && n.raw > it.warn_above) || (it.warn_below != null && n.raw < it.warn_below));
+          return `<div class="st${warn ? ' is-warn' : ''}">
+            <div class="num">${n ? n.v : fx.esc(fx.fmt(it.entity))}${n && n.unit ? `<small>${fx.esc(n.unit)}</small>` : ''}</div>
+            <div class="label">${fx.esc(it.label)}</div></div>`;
+        }).join('');
+        return `<div class="blk">${variables.title ? `<div class="label">${fx.esc(variables.title)}</div>` : ''}
+          <div class="st-grid" style="--cols:${Math.min(variables.cols, items.length) || 1}">${cells}</div></div>`;
+      ]]]
+
+# ----------------------------------------------------------------------- onboarding
+
+# Setup page: checks the install (resources, fonts, theme), lists every entity this dashboard uses
+# that does not exist in your Home Assistant (with likely matches), and writes YAML for the modules
+# from your own entities. Remove the Setup page from `pages` and the view once you are happy.
+frame_setup:
+  template: frame
+  update_timer: 10s
+  styles:
+    card:
+      - height: auto
+    grid:
+      - height: auto
+    custom_fields:
+      body:
+        - height: auto
+        - overflow: visible
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const H = hass, S = H.states;
+        const esc = fx.esc;
+
+        // ---------------------------------------------------- 1. install checks
+        const fontOk = (fam) => [...document.fonts].some((f) => f.family.replace(/["']/g, '') === fam && f.status === 'loaded');
+        const theme = H.themes && H.themes.themes && H.themes.themes.Frame;
+        const vt = (H.themes && H.themes.theme) || '';
+        const checks = [
+          [true, 'Frame runtime', 'frame.js and frame.css are loaded', ''],
+          [true, 'button-card', 'Installed and rendering', ''],
+          [!!customElements.get('layout-card'), 'layout-card', 'Installed', 'HACS → search “layout-card” → Download, then reload the page.'],
+          [fontOk('Archivo') && fontOk('Instrument Serif'), 'Fonts', 'Archivo and Instrument Serif',
+            'Add the Google Fonts stylesheet as a dashboard resource (docs/getting-started.md, step 4).'],
+          [!!theme, 'Theme “Frame”', vt === 'Frame' ? 'Installed and active everywhere' : 'Installed, used by these views',
+            'Copy themes/frame.yaml into your themes folder, then run the action frontend.reload_themes.'],
+          [!!S[variables.weather], 'Weather', variables.weather, `Set “weather” in templates.yaml to your weather entity (now: ${variables.weather}).`],
+        ];
+        const done = checks.filter((c) => c[0]).length;
+        const checkHtml = checks.map(([okk, name, good, hint]) => `<div class="su-chk${okk ? ' is-ok' : ''}">
+          <span class="su-dot"><ha-icon icon="${okk ? 'mdi:check' : 'mdi:close'}"></ha-icon></span>
+          <b>${name}</b><span>${esc(okk ? good : hint)}</span></div>`).join('');
+
+        // ---------------------------------------------------- 2. missing entities
+        // every entity id in this dashboard's config (views + templates) that does not exist
+        const findPanel = (root, depth) => {
+          if (!root || depth > 8) return null;
+          for (const el of root.querySelectorAll('*')) {
+            if (el.tagName === 'HA-PANEL-LOVELACE') return el;
+            const hit = el.shadowRoot && findPanel(el.shadowRoot, depth + 1);
+            if (hit) return hit;
+          }
+          return null;
+        };
+        const panel = window.__frameSetupPanel && window.__frameSetupPanel.isConnected ? window.__frameSetupPanel
+          : (window.__frameSetupPanel = findPanel(document, 0));
+        const cfg = panel && panel.lovelace && panel.lovelace.config;
+        const DOMAINS = 'person|weather|calendar|light|switch|cover|lock|scene|script|sensor|binary_sensor|climate|media_player|fan|vacuum|input_boolean|input_datetime|input_select|input_number|automation|camera|alarm_control_panel';
+        const used = cfg ? [...new Set((JSON.stringify(cfg).match(new RegExp(`\\b(?:${DOMAINS})\\.[a-z0-9_]+\\b`, 'g')) || []))] : [];
+        const missing = used.filter((id) => !S[id] && !/\.(x|none|turn_on|turn_off|toggle|entity_id)$/.test(id));
+        // likely matches: same domain, most shared words in id and name
+        const words = (s) => String(s).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+        const guess = (id) => {
+          const [dom, obj] = id.split('.'), want = words(obj);
+          const hits = Object.keys(S).filter((x) => x.startsWith(dom + '.'))
+            .map((x) => { const have = words(x + ' ' + (S[x].attributes.friendly_name || '')); return [x, want.filter((w) => have.some((h) => h.startsWith(w) || w.startsWith(h))).length]; })
+            .filter((x) => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, 3).map((x) => x[0]);
+          // nothing alike, but only a few of that kind (people, calendars, weather): offer them all
+          const all = Object.keys(S).filter((x) => x.startsWith(dom + '.'));
+          return hits.length || all.length > 4 ? hits : all.slice(0, 3);
+        };
+        const missHtml = !cfg ? '<p class="su-p">Could not read this dashboard’s config.</p>'
+          : !missing.length ? `<p class="su-p"><b>All ${used.length} entities exist.</b> Nothing left to rename.</p>`
+          : `<p class="su-p">${missing.length} of ${used.length} entities in this dashboard don’t exist in your Home Assistant yet. Replace them in the YAML (search & replace), or use the generator below.</p>
+            <div class="su-miss">${missing.map((id) => { const g = guess(id); return `<div class="su-m"><code>${esc(id)}</code>
+              <span>${g.length ? 'maybe ' + g.map((x) => `<code class="su-g">${esc(x)}</code>`).join(' ') : '<i>no similar entity</i>'}</span></div>`; }).join('')}</div>`;
+
+        // ---------------------------------------------------- 3. YAML generator
+        const COLORS = [['#7A2DFF', '#FFFFFF'], ['#00A36C', '#FFFFFF'], ['#2D5BFF', '#FFFFFF'], ['#FFB000', '#111111'], ['#FF5A1F', '#FFFFFF'], ['#0F5C36', '#FFFFFF'], ['#F0294F', '#FFFFFF']];
+        const q = (s) => (/^[\w .()-]+$/.test(s) && !/^(yes|no|on|off|true|false|null)$/i.test(s) ? s : JSON.stringify(s));
+        const nm = (id) => (S[id] && S[id].attributes.friendly_name) || id.split('.')[1];
+        const reg = H.entities || {}, devs = H.devices || {}, areas = H.areas || {};
+        const areaOf = (id) => { const e = reg[id]; return e && (e.area_id || (devs[e.device_id] || {}).area_id); };
+        const visible = (id) => { const e = reg[id]; return !e || (!e.hidden && !e.entity_category); };
+        const of = (dom, test) => Object.keys(S).filter((id) => id.startsWith(dom + '.') && visible(id) && (!test || test(S[id]))).sort();
+        const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+        const card = (tpl, lines) => `- type: custom:button-card\n  template: ${tpl}\n${lines.filter(Boolean).map((l) => '  ' + l).join('\n')}`;
+        const GEN = {
+          people: ['People', 'Paste into templates.yaml → frame → variables, replacing the example “people”.', () => {
+            const ps = of('person');
+            return ps.length ? 'people:\n' + ps.map((id, i) => { const [c, ink] = COLORS[i % COLORS.length];
+              return `  - id: ${slug(nm(id).split(' ')[0])}\n    name: ${q(nm(id).split(' ')[0])}\n    person: ${id}\n    color: "${c}"\n    ink: "${ink}"`; }).join('\n') : '# no person.* entities found';
+          }],
+          calendars: ['Calendars', 'Paste into templates.yaml → frame → variables, replacing “calendars”. “who” is matched to a person by name; check it.', () => {
+            const ps = of('person').map((id) => slug(nm(id).split(' ')[0]));
+            const cs = of('calendar');
+            return cs.length ? 'calendars:\n' + cs.map((id) => { const w = words(id + ' ' + nm(id)); const who = ps.find((p) => w.includes(p)) || 'family';
+              return `  - entity: ${id}\n    who: ${who}`; }).join('\n') : '# no calendar.* entities found';
+          }],
+          lights: ['Lights by area', 'One tile per area with lights. Paste into the cards of a grid in views/house.yaml.', () => {
+            const byArea = {};
+            of('light', (s) => !Array.isArray(s.attributes.entity_id)).forEach((id) => { const a = areaOf(id); if (a) (byArea[a] = byArea[a] || []).push(id); });
+            const list = Object.keys(byArea).sort((a, b) => String((areas[a] || {}).name).localeCompare((areas[b] || {}).name));
+            return list.length ? list.map((a) => card('frame_light', ['variables:', `  name: ${q((areas[a] || {}).name || a)}`, `  area: ${a}`,
+              `  icon: ${(areas[a] || {}).icon || 'mdi:lightbulb-group-outline'}`])).join('\n\n') : '# no lights with an area found';
+          }],
+          covers: ['Covers', 'One slider per cover. Put each next to its room’s light tile and set “branch” to draw the line.', () => {
+            const cs = of('cover');
+            return cs.length ? cs.map((id) => card('frame_cover', [`entity: ${id}`, 'variables:', `  name: ${q(nm(id))}`])).join('\n\n') : '# no cover.* entities found';
+          }],
+          climate: ['Climate', 'One frame_rooms card with a tile per area that has a temperature sensor.', () => {
+            const temp = of('sensor', (s) => s.attributes.device_class === 'temperature' && s.attributes.state_class === 'measurement');
+            const hum = of('sensor', (s) => s.attributes.device_class === 'humidity' && s.attributes.state_class === 'measurement');
+            const clim = of('climate');
+            const seen = new Set(), rows = [];
+            temp.forEach((id) => { const a = areaOf(id); const key = a || id; if (seen.has(key)) return; seen.add(key);
+              const h = a && hum.find((x) => areaOf(x) === a), c = a && clim.find((x) => areaOf(x) === a);
+              rows.push([`    - name: ${q(a ? (areas[a] || {}).name || a : nm(id))}`, `      temp: ${id}`, h && `      hum: ${h}`, c && `      climate: ${c}`].filter(Boolean).join('\n')); });
+            return rows.length ? card('frame_rooms', ['variables:', '  rooms:']) + '\n' + rows.join('\n') : '# no temperature sensors with state_class measurement found';
+          }],
+          scenes: ['Scenes', 'Scene and script tiles. Add “kind: on” or “kind: off” with “lights” for tiles that show state.', () => {
+            const list = of('scene').concat(of('script')).slice(0, 16);
+            return list.length ? list.map((id) => card('frame_scene', [`entity: ${id}`, 'variables:', `  name: ${q(nm(id))}`,
+              `  icon: ${(S[id].attributes.icon) || (id.startsWith('scene.') ? 'mdi:palette-outline' : 'mdi:play-circle-outline')}`])).join('\n\n') : '# no scenes or scripts found';
+          }],
+          openings: ['Windows & doors', 'frame_openings finds door/window sensors on its own. To pick them yourself:', () => {
+            const cs = of('binary_sensor', (s) => ['door', 'window', 'garage_door'].includes(s.attributes.device_class));
+            return card('frame_openings', ['variables:', '  entities:']) + '\n' + (cs.length ? cs.map((id) => `      - ${id}`).join('\n') : '      # no door/window sensors found');
+          }],
+        };
+        window.__frameSetupGen = (el, key) => {
+          const root = el.getRootNode(), g = GEN[key];
+          root.querySelectorAll('.su-tab').forEach((b) => b.classList.toggle('is-on', b.dataset.k === key));
+          root.querySelector('.su-hint').textContent = g[1];
+          root.querySelector('.su-out').value = g[2]();
+          window.__frameSetupTab = key;
+        };
+        window.__frameSetupCopy = (el) => {
+          const ta = el.getRootNode().querySelector('.su-out');
+          const done2 = () => { el.textContent = 'Copied'; setTimeout(() => { el.textContent = 'Copy'; }, 1500); };
+          if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(ta.value).then(done2);
+          else { ta.focus(); ta.select(); document.execCommand('copy'); done2(); }
+        };
+        const tab = window.__frameSetupTab || 'people';
+        // keep the generator as it is while the card redraws (update_timer) – only the checks change
+        const root = this.shadowRoot, old = root && root.querySelector('.su-out');
+        const out = old ? old.value : GEN[tab][2]();
+
+        return `<div class="su">
+          <div class="su-head"><div><span class="label">Frame starter</span><h1>Welcome to your wall dashboard.</h1>
+            <p>This page checks your install and helps you swap the example entities for your own. Remove it from <code>pages</code> when you’re done.</p></div>
+            <div class="su-score num">${done}<small>/${checks.length}</small></div></div>
+          <section class="blk"><div class="label">1 · Install</div><div class="su-chks">${checkHtml}</div></section>
+          <section class="blk"><div class="label">2 · Entities in this dashboard</div>${missHtml}</section>
+          <section class="blk"><div class="label">3 · Generate YAML from your Home Assistant</div>
+            <div class="su-tabs">${Object.entries(GEN).map(([k, g]) => `<button class="su-tab${k === tab ? ' is-on' : ''}" data-k="${k}" onpointerup="__frameSetupGen(this,'${k}')">${g[0]}</button>`).join('')}</div>
+            <p class="su-p su-hint">${esc(GEN[tab][1])}</p>
+            <div class="su-code"><textarea class="su-out" readonly spellcheck="false">${esc(out)}</textarea>
+              <button class="su-copy" onpointerup="__frameSetupCopy(this)">Copy</button></div>
+          </section>
+        </div>`;
+      ]]]

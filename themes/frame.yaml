@@ -1,0 +1,41 @@
+# Frame – paper & ink. Set per view (theme: Frame), not globally.
+# Copy this file into your themes folder (configuration.yaml: frontend: themes: !include_dir_merge_named themes),
+# then run the action frontend.reload_themes.
+Frame:
+  # Palette (www/frame/frame.css has the same values for the cards)
+  frame-paper: "#F2EEE6"
+  frame-paper-2: "#E8E2D5"
+  frame-card: "#FBF9F4"
+  frame-ink: "#111111"
+  frame-ink-2: "#3B3934"
+  frame-mute: "#7A756B"
+  frame-line: "#D6CFC0"
+
+  # Fonts (loaded from Google Fonts as a dashboard resource)
+  primary-font-family: "'Archivo', system-ui, sans-serif"
+  ha-font-family-body: "'Archivo', system-ui, sans-serif"
+  ha-font-family-heading: "'Instrument Serif', Georgia, serif"
+
+  # layout-card's grid-layout ignores card_margin and uses this (default 4px 4px 8px)
+  masonry-view-card-margin: "0px"
+
+  # Home Assistant colours bent to paper & ink
+  lovelace-background: "#F2EEE6"
+  primary-background-color: "#F2EEE6"
+  secondary-background-color: "#E8E2D5"
+  card-background-color: "#FBF9F4"
+  ha-card-background: "#FBF9F4"
+  primary-text-color: "#111111"
+  secondary-text-color: "#7A756B"
+  disabled-text-color: "#B5AFA3"
+  primary-color: "#111111"
+  accent-color: "#E5261E"
+  divider-color: "#D6CFC0"
+  state-icon-color: "#3B3934"
+  app-header-background-color: "#F2EEE6"
+  app-header-text-color: "#111111"
+
+  # Cards: flat, round, no shadow
+  ha-card-border-radius: "18px"
+  ha-card-border-width: "0"
+  ha-card-box-shadow: "none"

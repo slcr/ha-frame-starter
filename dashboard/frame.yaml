@@ -1,0 +1,23 @@
+# Frame – a wall dashboard in paper & ink.
+#
+# Copy this folder to /config/frame and register it in configuration.yaml (docs/getting-started.md):
+#   lovelace:
+#     dashboards:
+#       dashboard-frame:
+#         mode: yaml
+#         filename: frame/frame.yaml
+#         title: Frame
+#         icon: mdi:view-dashboard-variant-outline
+#         show_in_sidebar: true
+#
+# Optional: kiosk-mode (HACS) hides HA's header and sidebar. Add ?disable_km to the URL to edit.
+kiosk_mode:
+  hide_header: true
+  hide_sidebar: true
+
+button_card_templates: !include templates.yaml
+
+views:
+  - !include views/home.yaml
+  - !include views/house.yaml
+  - !include views/setup.yaml
