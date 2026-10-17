@@ -95,6 +95,8 @@ button-card evaluates each template's JavaScript on every render. Frame keeps it
 
 ## Credits
 
+Built with [Claude Code](https://claude.com/claude-code) running Claude Opus 5.5. Claude wrote the code, the docs and the screenshot tooling together with me, starting from my own Frame dashboard.
+
 The design started from the idea behind [wesbos/photo-frame-dashboard](https://github.com/wesbos/photo-frame-dashboard). Type is [Archivo](https://fonts.google.com/specimen/Archivo) and [Instrument Serif](https://fonts.google.com/specimen/Instrument+Serif). Icons are [Material Design Icons](https://pictogrammers.com/library/mdi/). The flight card's clouds follow [mrdoob's WebGL clouds](https://mrdoob.com/lab/javascript/webgl/clouds/). The plane and bin pictures were generated for this project. The screenshots use demo data; the camera and slideshow photos are from [Pexels](https://www.pexels.com/license/) and [Unsplash](https://unsplash.com/license).
 
 ## License
