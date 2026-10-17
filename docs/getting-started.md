@@ -14,17 +14,22 @@ HACS registers each card as a dashboard resource. Leave those entries in place.
 
 ## 2. Copy the files
 
+The easiest way is the **Advanced SSH & Web Terminal** add-on: clone the repo and run the install script. Add the optional modules you want by name (see [optional/](../optional/)):
+
+```bash
+cd /tmp && git clone --depth 1 https://github.com/slcr/ha-frame-starter && ./ha-frame-starter/install.sh calendar energy
+```
+
+It copies:
+
 | From this repo | To |
 | --- | --- |
 | `www/frame/` | `/config/www/frame/` |
 | `dashboard/` | `/config/frame/` |
 | `themes/frame.yaml` | `/config/themes/frame.yaml` |
+| `optional/<name>/…` | the same places |
 
-With the SSH add-on, this does all three:
-
-```bash
-cd /tmp && git clone --depth 1 https://github.com/slcr/ha-frame-starter && cp -r ha-frame-starter/www/frame /config/www/ && cp -r ha-frame-starter/dashboard /config/frame && mkdir -p /config/themes && cp ha-frame-starter/themes/frame.yaml /config/themes/ && rm -rf ha-frame-starter
-```
+You can also copy these by hand with the File editor, Samba or Studio Code Server. To update later, pull the repo again and run the script: it replaces the code but keeps `templates/frame.yaml`, your views and the theme.
 
 > If `/config/www` didn't exist before, restart Home Assistant once so it serves `/local/`.
 
@@ -90,22 +95,26 @@ Open **Frame** in the sidebar and tap **Setup** in the rail.
 
 | Tab | Paste into |
 | --- | --- |
-| People | `dashboard/templates.yaml` → `frame:` → `variables:` (replace `people:`) |
+| People | `templates/frame.yaml` → `variables:` (replace `people:`) |
 | Calendars | the same place (replace `calendars:`). Check that `who` points at the right person. |
-| Lights by area | `views/house.yaml`: one `frame_light` per area, controlling every light in it |
-| Covers | `views/house.yaml`, next to the light of the same room |
-| Climate | `views/house.yaml`: one `frame_rooms` card, one tile per area with a temperature sensor |
-| Scenes | `views/house.yaml`: scene and script buttons |
+| Lights by area | `views/20-house.yaml`: one `frame_light` per area, controlling every light in it |
+| Covers | `views/20-house.yaml`, next to the light of the same room |
+| Climate | `views/20-house.yaml`: one `frame_rooms` card, one tile per area with a temperature sensor |
+| Scenes | `views/20-house.yaml`: scene and script buttons |
 | Windows & doors | anywhere. `frame_openings` also finds contact sensors on its own. |
+
+**4 · Optional modules** lists every module in [optional/](../optional/) and marks the ones that fit what you have (green), with what's missing for the others.
+
+![Optional modules](screenshots/setup-optional.png)
 
 ## 6. Make it yours
 
-1. Set `weather:` in `templates.yaml` to your weather entity. It needs an hourly forecast; Met.no, the default integration, has one.
+1. Set `weather:` in `templates/frame.yaml` to your weather entity. It needs an hourly forecast; Met.no, the default integration, has one.
 2. Replace `people` and `calendars`.
-3. Go through `views/home.yaml` and `views/house.yaml`. Swap the example entities for yours and delete what you don't have. The Setup page counts down as you go.
-4. When everything's green, delete `views/setup.yaml`, its line in `frame.yaml` and the `setup` entry under `pages` in `frame_rail`.
+3. Go through `views/10-home.yaml` and `views/20-house.yaml`. Swap the example entities for yours and delete what you don't have. The Setup page counts down as you go.
+4. When everything's green, delete `views/90-setup.yaml`. The rail drops the page by itself.
 
-Changes to a YAML dashboard show up after a browser refresh. If an edit to an included file doesn't appear, save `frame.yaml` once as well (touch it) and refresh again.
+Changes to a YAML dashboard show up after a browser refresh. If an edit to an included file doesn't appear, save `frame.yaml` once as well (touch it) and refresh again. New files in `templates/` or `views/` are picked up the same way.
 
 ## 7. On the wall
 
@@ -143,4 +152,4 @@ The sensor has no long-term statistics. It needs `state_class: measurement` (mos
 
 ### Calendar is empty
 
-Check `calendars:` in `templates.yaml`. The entities must exist (`calendar.…`) and the user needs access to them.
+Check `calendars:` in `templates/frame.yaml`. The entities must exist (`calendar.…`) and the user needs access to them.

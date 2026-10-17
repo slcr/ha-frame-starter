@@ -1,0 +1,103 @@
+# The base template `frame`: your household (people, calendars, weather) and the helpers (fx) from
+# www/frame/frame.js. Every module inherits from it.
+#
+# This folder is loaded with !include_dir_merge_named: every .yaml file in it adds templates. Optional
+# modules (optional/*) bring their own file; copying it here is all it takes to make the module available.
+#
+frame:
+  show_name: false
+  show_icon: false
+  show_state: false
+  show_label: false
+  show_ripple: false
+  tap_action:
+    action: none
+  hold_action:
+    action: none
+  double_tap_action:
+    action: none
+  variables:
+    # ------------------------------------------------------------------ YOUR HOUSEHOLD
+    # The Setup page writes these lists for you from what it finds in Home Assistant.
+    # id: short name used by calendars; color/ink: avatar and event colours.
+    people:
+      - id: alex
+        name: Alex
+        person: person.alex
+        color: "#7A2DFF"
+        ink: "#FFFFFF"
+      - id: sam
+        name: Sam
+        person: person.sam
+        color: "#00A36C"
+        ink: "#FFFFFF"
+      - id: robin
+        name: Robin
+        person: person.robin
+        color: "#2D5BFF"
+        ink: "#FFFFFF"
+      - id: kim
+        name: Kim
+        person: person.kim
+        color: "#FFB000"
+        ink: "#111111"
+    # Events from calendars that belong to nobody in particular
+    family:
+      id: family
+      name: Everyone
+      color: "#D62F6E"
+      ink: "#FFFFFF"
+      icon: mdi:star
+    # Calendars shown in frame_next and frame_agenda. who: a person id, family, or a category id
+    calendars:
+      - entity: calendar.family
+        who: family
+      - entity: calendar.alex
+        who: alex
+      - entity: calendar.sam
+        who: sam
+      - entity: calendar.robin
+        who: robin
+      - entity: calendar.kim
+        who: kim
+    # More calendar colours without a person (holidays, birthdays ...)
+    categories: []
+    weather: weather.home
+    # Travel time in seconds for covers that do not report their position while moving
+    # (e.g. cover.living_room_blind: 25). The slider estimates the position on the way.
+    cover_travel: {}
+    # optional/flights: planes from the Flightradar24 integration fly across the screen. Uncomment after
+    # copying optional/flights; radius_km = the radius you set in the integration.
+    # flights:
+    #   entity: sensor.flightradar24_current_in_area
+    #   radius_km: 5
+    # Translate or reword any UI string; keys are listed at the top of www/frame/frame.js (TEXT)
+    text: {}
+    # ------------------------------------------------------------------
+    # Helpers for all cards (www/frame/frame.js), parsed once per page instead of on every render
+    fx: "[[[ return window.frame && window.frame.fx.call(this, states, hass, variables); ]]]"
+  styles:
+    card:
+      - padding: 0
+      - background: none
+      - box-shadow: none
+      - border: none
+      - border-radius: 0
+      - height: 100%
+      - overflow: visible
+    grid:
+      - grid-template-areas: '"body"'
+      - grid-template-columns: 1fr
+      - grid-template-rows: 1fr
+      - height: 100%
+    custom_fields:
+      body:
+        - height: 100%
+        - width: 100%
+        - min-width: 0
+        - white-space: normal
+        - overflow: hidden
+        - text-overflow: clip
+        - text-align: left
+        - justify-self: stretch
+

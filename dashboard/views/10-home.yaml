@@ -1,0 +1,132 @@
+# Home: clock, weather and who is home on top; the next event big; the week below; status on the right.
+# Made for a 12.9" iPad in landscape (1366 × 1024), fills any screen from ~1000 px wide.
+# Under 768 px it becomes one scrolling column with the rail as a top bar.
+# Views are loaded with !include_dir_merge_list, in file name order: each file is a list with one view.
+- title: Home
+  path: home
+  icon: mdi:view-dashboard-outline
+  theme: Frame
+  type: custom:grid-layout
+  layout:
+    grid-template-columns: 88px minmax(0, 1fr)
+    grid-template-rows: 100vh
+    grid-template-areas: '"rail main"'
+    mediaquery:
+      "(max-width: 767px)":
+        grid-template-columns: minmax(0, 1fr)
+        grid-template-rows: 56px auto
+        grid-template-areas: '"rail" "main"'
+    margin: 0
+    padding: 0
+    card_margin: 0
+  cards:
+    - type: custom:button-card
+      template: frame_rail
+      view_layout:
+        grid-area: rail
+
+    - type: custom:layout-card
+      layout_type: custom:grid-layout
+      view_layout:
+        grid-area: main
+      layout:
+        grid-template-columns: repeat(24, minmax(0, 1fr))
+        grid-template-rows: 200px 250px minmax(0, 1fr)
+        grid-template-areas: |
+          "clock clock clock clock clock clock clock clock clock wx wx wx wx wx wx wx wx wx wx who who who who who"
+          "next next next next next next next next next next next next next next side side side side side side side side side side"
+          "week week week week week week week week week week week week week week side side side side side side side side side side"
+        grid-gap: 16px
+        height: calc(100vh - 48px)
+        padding: 24px
+        mediaquery:
+          "(max-width: 767px)":
+            grid-template-columns: minmax(0, 1fr)
+            grid-template-rows: auto
+            grid-template-areas: '"clock" "wx" "who" "next" "side" "week"'
+            height: auto
+            padding: 16px
+        margin: 0
+        card_margin: 0
+      cards:
+        - type: custom:button-card
+          template: frame_clock
+          view_layout:
+            grid-area: clock
+
+        - type: custom:button-card
+          template: frame_weather
+          view_layout:
+            grid-area: wx
+
+        - type: custom:button-card
+          template: frame_people
+          view_layout:
+            grid-area: who
+
+        - type: custom:button-card
+          template: frame_next
+          view_layout:
+            grid-area: next
+
+        - type: custom:button-card
+          template: frame_agenda
+          view_layout:
+            grid-area: week
+
+        # Right column: status
+        - type: custom:layout-card
+          layout_type: custom:grid-layout
+          view_layout:
+            grid-area: side
+          layout:
+            grid-template-columns: 1fr
+            grid-auto-rows: min-content
+            grid-gap: 12px
+            margin: 0
+            padding: 0
+            card_margin: 0
+          cards:
+            - type: custom:button-card
+              template: frame_lock
+              entity: lock.front_door
+              variables:
+                door: binary_sensor.front_door
+                battery: binary_sensor.front_door_lock_battery
+
+            - type: custom:button-card
+              template: frame_openings
+
+            - type: custom:button-card
+              template: frame_stats
+              variables:
+                title: Energy
+                items:
+                  - label: Using now
+                    entity: sensor.house_power
+                    scale: 0.001
+                    unit: kW
+                    decimals: 1
+                  - label: Solar
+                    entity: sensor.solar_power
+                    scale: 0.001
+                    unit: kW
+                    decimals: 1
+                  - label: Today
+                    entity: sensor.energy_today
+                    decimals: 1
+
+            - type: custom:button-card
+              template: frame_stats
+              variables:
+                title: Air
+                items:
+                  - label: CO₂
+                    entity: sensor.office_co2
+                    warn_above: 1000
+                  - label: Fine dust
+                    entity: sensor.pm25
+                    warn_above: 25
+                  - label: Outside
+                    entity: sensor.outdoor_temperature
+                    decimals: 1

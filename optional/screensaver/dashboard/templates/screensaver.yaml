@@ -1,0 +1,29 @@
+# Screensaver (optional/screensaver): a photo slideshow with WallPanel (HACS) and Frame's clock on top:
+# big time, date, current weather and the next event of the day. The WallPanel settings that go into
+# frame.yaml are in optional/screensaver/README.md.
+frame_screensaver:
+  template: frame
+  update_timer: 15s
+  styles:
+    card:
+      - width: 100vw
+      - height: 100vh
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const now = new Date(), c = fx.clock(now);
+        const cur = states[variables.weather];
+        const ICON = { 'clear-night': 'mdi:weather-night', cloudy: 'mdi:weather-cloudy', fog: 'mdi:weather-fog', partlycloudy: 'mdi:weather-partly-cloudy',
+          pouring: 'mdi:weather-pouring', rainy: 'mdi:weather-rainy', snowy: 'mdi:weather-snowy', sunny: 'mdi:weather-sunny', windy: 'mdi:weather-windy',
+          lightning: 'mdi:weather-lightning', 'lightning-rainy': 'mdi:weather-lightning-rainy', hail: 'mdi:weather-hail', 'snowy-rainy': 'mdi:weather-snowy-rainy' };
+        const wx = cur ? `<ha-icon icon="${ICON[cur.state] || 'mdi:weather-cloudy'}"></ha-icon>${Math.round(cur.attributes.temperature)}° · ${fx.esc(fx.fmt(variables.weather))}` : '';
+        const next = fx.agenda(1).find((e) => !e.all_day && e.to > now);
+        const nx = next ? `<span class="amb-dot" style="${fx.pstyle(fx.person(next.who))}"></span>${next.from <= now ? fx.t('now') : fx.time(next.from)} · ${fx.esc(next.title)}` : '';
+        return `<div class="amb">
+          <div class="amb-time num">${c.hm}${c.ampm ? `<small>${c.ampm}</small>` : ''}</div>
+          <div class="amb-date"><b>${fx.weekday(now)}</b>${fx.dateLong(now)}</div>
+          <div class="amb-row">${wx ? `<span>${wx}</span>` : ''}${nx ? `<span>${nx}</span>` : ''}</div>
+        </div>`;
+      ]]]

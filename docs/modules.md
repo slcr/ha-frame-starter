@@ -11,11 +11,13 @@ Every module is a button-card template. Use one like this:
     icon: mdi:countertop-outline
 ```
 
+These are the core modules in `templates/core.yaml`. The [optional modules](../optional/) document theirs in their READMEs.
+
 All modules inherit from `frame`, so the household settings (`people`, `calendars`, `weather`, `text`) are available everywhere. Sizes come from the layout: put modules in a `custom:grid-layout` and give the rows a height (`grid-auto-rows: 72px`) or let the module fill its grid area.
 
 ## Household (`frame`)
 
-Set these once at the top of `dashboard/templates.yaml`:
+Set these once in `templates/frame.yaml`:
 
 | Variable | |
 | --- | --- |
@@ -26,15 +28,16 @@ Set these once at the top of `dashboard/templates.yaml`:
 | `weather` | A `weather.*` entity with an hourly forecast |
 | `cover_travel` | `{cover.x: seconds}` for covers that don't report their position while moving |
 | `text` | Override any UI string (see [customizing.md](customizing.md#language)) |
+| `flights` | Switches on [optional/flights](../optional/flights/) |
 
 ## Today
 
 ### `frame_rail`
-The navigation. Place it in the `rail` area of each view.
+The navigation. Place it in the `rail` area of each view. It lists every view of the dashboard with its `title` and `icon`, in file name order; views with `visible: false` are left out.
 
 | Variable | Default | |
 | --- | --- | --- |
-| `pages` | home, house, setup | `[{path, label, icon}]`. `path` is the view's `path`. |
+| `pages` | (the views) | `[{path, label, icon}]` to list your own instead. `path` is the view's `path`. |
 | `active` | from the URL | Force the highlighted page |
 
 ### `frame_clock`

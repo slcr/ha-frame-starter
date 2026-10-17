@@ -1,0 +1,184 @@
+# ----------------------------------------------------------------------- onboarding
+
+# Setup page: checks the install (resources, fonts, theme), lists every entity this dashboard uses
+# that does not exist in your Home Assistant (with likely matches), and writes YAML for the modules
+# from your own entities. Delete views/90-setup.yaml once you are happy.
+frame_setup:
+  template: frame
+  update_timer: 10s
+  styles:
+    card:
+      - height: auto
+    grid:
+      - height: auto
+    custom_fields:
+      body:
+        - height: auto
+        - overflow: visible
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const H = hass, S = H.states;
+        const esc = fx.esc;
+
+        // ---------------------------------------------------- 1. install checks
+        const fontOk = (fam) => [...document.fonts].some((f) => f.family.replace(/["']/g, '') === fam && f.status === 'loaded');
+        const theme = H.themes && H.themes.themes && H.themes.themes.Frame;
+        const vt = (H.themes && H.themes.theme) || '';
+        const checks = [
+          [true, 'Frame runtime', 'frame.js and frame.css are loaded', ''],
+          [true, 'button-card', 'Installed and rendering', ''],
+          [!!customElements.get('layout-card'), 'layout-card', 'Installed', 'HACS → search “layout-card” → Download, then reload the page.'],
+          [fontOk('Archivo') && fontOk('Instrument Serif'), 'Fonts', 'Archivo and Instrument Serif',
+            'Add the Google Fonts stylesheet as a dashboard resource (docs/getting-started.md, step 4).'],
+          [!!theme, 'Theme “Frame”', vt === 'Frame' ? 'Installed and active everywhere' : 'Installed, used by these views',
+            'Copy themes/frame.yaml into your themes folder, then run the action frontend.reload_themes.'],
+          [!!S[variables.weather], 'Weather', variables.weather, `Set “weather” in templates/frame.yaml to your weather entity (now: ${variables.weather}).`],
+        ];
+        const done = checks.filter((c) => c[0]).length;
+        const checkHtml = checks.map(([okk, name, good, hint]) => `<div class="su-chk${okk ? ' is-ok' : ''}">
+          <span class="su-dot"><ha-icon icon="${okk ? 'mdi:check' : 'mdi:close'}"></ha-icon></span>
+          <b>${name}</b><span>${esc(okk ? good : hint)}</span></div>`).join('');
+
+        // ---------------------------------------------------- 2. missing entities
+        // every entity id in this dashboard's config (views + templates) that does not exist
+        const cfg = fx.lovelace();
+        const DOMAINS = 'person|weather|calendar|light|switch|cover|lock|scene|script|sensor|binary_sensor|climate|media_player|fan|vacuum|input_boolean|input_datetime|input_select|input_number|automation|camera|alarm_control_panel';
+        const used = cfg ? [...new Set((JSON.stringify(cfg).match(new RegExp(`\\b(?:${DOMAINS})\\.[a-z0-9_]+\\b`, 'g')) || []))] : [];
+        const missing = used.filter((id) => !S[id] && !/\.(x|none|turn_on|turn_off|toggle|entity_id)$/.test(id));
+        // likely matches: same domain, most shared words in id and name
+        const words = (s) => String(s).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+        const guess = (id) => {
+          const [dom, obj] = id.split('.'), want = words(obj);
+          const hits = Object.keys(S).filter((x) => x.startsWith(dom + '.'))
+            .map((x) => { const have = words(x + ' ' + (S[x].attributes.friendly_name || '')); return [x, want.filter((w) => have.some((h) => h.startsWith(w) || w.startsWith(h))).length]; })
+            .filter((x) => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, 3).map((x) => x[0]);
+          // nothing alike, but only a few of that kind (people, calendars, weather): offer them all
+          const all = Object.keys(S).filter((x) => x.startsWith(dom + '.'));
+          return hits.length || all.length > 4 ? hits : all.slice(0, 3);
+        };
+        const missHtml = !cfg ? '<p class="su-p">Could not read this dashboard’s config.</p>'
+          : !missing.length ? `<p class="su-p"><b>All ${used.length} entities exist.</b> Nothing left to rename.</p>`
+          : `<p class="su-p">${missing.length} of ${used.length} entities in this dashboard don’t exist in your Home Assistant yet. Replace them in the YAML (search & replace), or use the generator below.</p>
+            <div class="su-miss">${missing.map((id) => { const g = guess(id); return `<div class="su-m"><code>${esc(id)}</code>
+              <span>${g.length ? 'maybe ' + g.map((x) => `<code class="su-g">${esc(x)}</code>`).join(' ') : '<i>no similar entity</i>'}</span></div>`; }).join('')}</div>`;
+
+        // ---------------------------------------------------- 3. YAML generator
+        const COLORS = [['#7A2DFF', '#FFFFFF'], ['#00A36C', '#FFFFFF'], ['#2D5BFF', '#FFFFFF'], ['#FFB000', '#111111'], ['#FF5A1F', '#FFFFFF'], ['#0F5C36', '#FFFFFF'], ['#F0294F', '#FFFFFF']];
+        const q = (s) => (/^[\w .()-]+$/.test(s) && !/^(yes|no|on|off|true|false|null)$/i.test(s) ? s : JSON.stringify(s));
+        const nm = (id) => (S[id] && S[id].attributes.friendly_name) || id.split('.')[1];
+        const reg = H.entities || {}, devs = H.devices || {}, areas = H.areas || {};
+        const areaOf = (id) => { const e = reg[id]; return e && (e.area_id || (devs[e.device_id] || {}).area_id); };
+        const visible = (id) => { const e = reg[id]; return !e || (!e.hidden && !e.entity_category); };
+        const of = (dom, test) => Object.keys(S).filter((id) => id.startsWith(dom + '.') && visible(id) && (!test || test(S[id]))).sort();
+        const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+        const card = (tpl, lines) => `- type: custom:button-card\n  template: ${tpl}\n${lines.filter(Boolean).map((l) => '  ' + l).join('\n')}`;
+        const GEN = {
+          people: ['People', 'Paste into templates/frame.yaml → variables, replacing the example “people”.', () => {
+            const ps = of('person');
+            return ps.length ? 'people:\n' + ps.map((id, i) => { const [c, ink] = COLORS[i % COLORS.length];
+              return `  - id: ${slug(nm(id).split(' ')[0])}\n    name: ${q(nm(id).split(' ')[0])}\n    person: ${id}\n    color: "${c}"\n    ink: "${ink}"`; }).join('\n') : '# no person.* entities found';
+          }],
+          calendars: ['Calendars', 'Paste into templates/frame.yaml → variables, replacing “calendars”. “who” is matched to a person by name; check it.', () => {
+            const ps = of('person').map((id) => slug(nm(id).split(' ')[0]));
+            const cs = of('calendar');
+            return cs.length ? 'calendars:\n' + cs.map((id) => { const w = words(id + ' ' + nm(id)); const who = ps.find((p) => w.includes(p)) || 'family';
+              return `  - entity: ${id}\n    who: ${who}`; }).join('\n') : '# no calendar.* entities found';
+          }],
+          lights: ['Lights by area', 'One tile per area with lights. Paste into the cards of a grid in views/20-house.yaml.', () => {
+            const byArea = {};
+            of('light', (s) => !Array.isArray(s.attributes.entity_id)).forEach((id) => { const a = areaOf(id); if (a) (byArea[a] = byArea[a] || []).push(id); });
+            const list = Object.keys(byArea).sort((a, b) => String((areas[a] || {}).name).localeCompare((areas[b] || {}).name));
+            return list.length ? list.map((a) => card('frame_light', ['variables:', `  name: ${q((areas[a] || {}).name || a)}`, `  area: ${a}`,
+              `  icon: ${(areas[a] || {}).icon || 'mdi:lightbulb-group-outline'}`])).join('\n\n') : '# no lights with an area found';
+          }],
+          covers: ['Covers', 'One slider per cover. Put each next to its room’s light tile and set “branch” to draw the line.', () => {
+            const cs = of('cover');
+            return cs.length ? cs.map((id) => card('frame_cover', [`entity: ${id}`, 'variables:', `  name: ${q(nm(id))}`])).join('\n\n') : '# no cover.* entities found';
+          }],
+          climate: ['Climate', 'One frame_rooms card with a tile per area that has a temperature sensor.', () => {
+            const temp = of('sensor', (s) => s.attributes.device_class === 'temperature' && s.attributes.state_class === 'measurement');
+            const hum = of('sensor', (s) => s.attributes.device_class === 'humidity' && s.attributes.state_class === 'measurement');
+            const clim = of('climate');
+            const seen = new Set(), rows = [];
+            temp.forEach((id) => { const a = areaOf(id); const key = a || id; if (seen.has(key)) return; seen.add(key);
+              const h = a && hum.find((x) => areaOf(x) === a), c = a && clim.find((x) => areaOf(x) === a);
+              rows.push([`    - name: ${q(a ? (areas[a] || {}).name || a : nm(id))}`, `      temp: ${id}`, h && `      hum: ${h}`, c && `      climate: ${c}`].filter(Boolean).join('\n')); });
+            return rows.length ? card('frame_rooms', ['variables:', '  rooms:']) + '\n' + rows.join('\n') : '# no temperature sensors with state_class measurement found';
+          }],
+          scenes: ['Scenes', 'Scene and script tiles. Add “kind: on” or “kind: off” with “lights” for tiles that show state.', () => {
+            const list = of('scene').concat(of('script')).slice(0, 16);
+            return list.length ? list.map((id) => card('frame_scene', [`entity: ${id}`, 'variables:', `  name: ${q(nm(id))}`,
+              `  icon: ${(S[id].attributes.icon) || (id.startsWith('scene.') ? 'mdi:palette-outline' : 'mdi:play-circle-outline')}`])).join('\n\n') : '# no scenes or scripts found';
+          }],
+          openings: ['Windows & doors', 'frame_openings finds door/window sensors on its own. To pick them yourself:', () => {
+            const cs = of('binary_sensor', (s) => ['door', 'window', 'garage_door'].includes(s.attributes.device_class));
+            return card('frame_openings', ['variables:', '  entities:']) + '\n' + (cs.length ? cs.map((id) => `      - ${id}`).join('\n') : '      # no door/window sensors found');
+          }],
+        };
+        window.__frameSetupGen = (el, key) => {
+          const root = el.getRootNode(), g = GEN[key];
+          root.querySelectorAll('.su-tab').forEach((b) => b.classList.toggle('is-on', b.dataset.k === key));
+          root.querySelector('.su-hint').textContent = g[1];
+          root.querySelector('.su-out').value = g[2]();
+          window.__frameSetupTab = key;
+        };
+        window.__frameSetupCopy = (el) => {
+          const ta = el.getRootNode().querySelector('.su-out');
+          const done2 = () => { el.textContent = 'Copied'; setTimeout(() => { el.textContent = 'Copy'; }, 1500); };
+          if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(ta.value).then(done2);
+          else { ta.focus(); ta.select(); document.execCommand('copy'); done2(); }
+        };
+        const tab = window.__frameSetupTab || 'people';
+        // keep the generator as it is while the card redraws (update_timer) – only the checks change
+        const root = this.shadowRoot, old = root && root.querySelector('.su-out');
+        const out = old ? old.value : GEN[tab][2]();
+
+        // ---------------------------------------------------- 4. optional modules
+        const tpl = (cfg && cfg.button_card_templates) || {};
+        const ids = Object.keys(S), has = (re) => ids.filter((id) => re.test(id + ' ' + (S[id].attributes.friendly_name || '')));
+        const prefs = fx.cached('__frameEnergy', 'prefs', 30, () => H.callWS({ type: 'energy/get_prefs' }));
+        const flightsOn = !!(tpl.frame && tpl.frame.variables && tpl.frame.variables.flights);
+        const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+        const OPT = [
+          ['calendar', 'Calendar page', 'Day, 3 days, week and month; add, move and delete events.', !!tpl.frame_calendar,
+            has(/^calendar\./).length ? `${pl(has(/^calendar\./).length, 'calendar', 'calendars')} found` : '', 'Needs a calendar integration (Google, CalDAV, Local calendar …)'],
+          ['energy', 'Energy page', 'Today’s use, solar, grid and self-sufficiency, per hour and per day, electricity prices.', !!tpl.frame_energy,
+            prefs && (prefs.energy_sources || []).length ? `Energy dashboard set up (${prefs.energy_sources.length} sources)` : '', 'Set up Settings → Dashboards → Energy first'],
+          ['flights', 'Planes overhead', 'Planes from Flightradar24 fly across the screen; tap one for its flight card.', flightsOn,
+            has(/^sensor\.flightradar24/).length ? 'Flightradar24 found' : '', 'Needs the Flightradar24 integration (HACS)'],
+          ['rubbish', 'Rubbish collection', 'Next pickups with painted bins, “put out tonight” reminder.', !!tpl.frame_bins,
+            has(/^calendar\..*(waste|bin|trash|rubbish|garbage|refuse|recycl|abfall|muell|müll)/i).length ? 'Waste calendar found' : '', 'Needs a waste calendar (Waste Collection Schedule, HACS)'],
+          ['appliances', 'Appliances', 'Washing machine, dishwasher, dryer … while they run or are finished.', !!tpl.frame_appliances,
+            has(/(wash|dish|dryer|vacuum|robot|laundry)/i).length ? `${pl(has(/(wash|dish|dryer|vacuum|robot|laundry)/i).length, 'likely entity', 'likely entities')}` : '', 'Works with any status sensor or smart plug'],
+          ['cameras', 'Cameras', 'Live tiles with motion; tap for full screen.', !!tpl.frame_camera,
+            has(/^camera\./).length ? `${pl(has(/^camera\./).length, 'camera', 'cameras')} found` : '', 'Needs camera entities'],
+          ['media', 'Music', 'What’s playing, big, plus a mini player for Home.', !!tpl.frame_media,
+            has(/^media_player\./).length ? `${pl(has(/^media_player\./).length, 'player', 'players')} found` : '', 'Needs media players'],
+          ['screensaver', 'Screensaver', 'Photo slideshow with clock, weather and the next event.', !!tpl.frame_screensaver,
+            customElements.get('wallpanel-view') ? 'WallPanel installed' : '', 'Needs WallPanel (HACS)'],
+        ];
+        const optHtml = OPT.map(([key, name, what, on, fit, need]) => `<div class="su-opt${on ? ' is-on' : fit ? ' is-fit' : ''}">
+          <div><b>${name}</b><span>${what}</span></div>
+          <span class="su-tag">${on ? '<ha-icon icon="mdi:check"></ha-icon>Installed' : fit ? esc(fit) : esc(need)}</span>
+          ${on ? '' : `<code>optional/${key}</code>`}</div>`).join('');
+
+        return `<div class="su">
+          <div class="su-head"><div><span class="label">Frame starter</span><h1>Welcome to your wall dashboard.</h1>
+            <p>This page checks your install and helps you swap the example entities for your own. Delete <code>views/90-setup.yaml</code> when you’re done.</p></div>
+            <div class="su-score num">${done}<small>/${checks.length}</small></div></div>
+          <section class="blk"><div class="label">1 · Install</div><div class="su-chks">${checkHtml}</div></section>
+          <section class="blk"><div class="label">2 · Entities in this dashboard</div>${missHtml}</section>
+          <section class="blk"><div class="label">3 · Generate YAML from your Home Assistant</div>
+            <div class="su-tabs">${Object.entries(GEN).map(([k, g]) => `<button class="su-tab${k === tab ? ' is-on' : ''}" data-k="${k}" onpointerup="__frameSetupGen(this,'${k}')">${g[0]}</button>`).join('')}</div>
+            <p class="su-p su-hint">${esc(GEN[tab][1])}</p>
+            <div class="su-code"><textarea class="su-out" readonly spellcheck="false">${esc(out)}</textarea>
+              <button class="su-copy" onpointerup="__frameSetupCopy(this)">Copy</button></div>
+          </section>
+          <section class="blk"><div class="label">4 · Optional modules</div>
+            <p class="su-p">Copy a folder from <code>optional/</code> into your install to add it (each has a README). Green ones fit what you already have.</p>
+            <div class="su-opts">${optHtml}</div></section>
+        </div>`;
+      ]]]

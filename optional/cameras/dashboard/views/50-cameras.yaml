@@ -1,0 +1,58 @@
+# Camera page (optional/cameras): one live tile per camera.
+- title: Cameras
+  path: cameras
+  icon: mdi:cctv
+  theme: Frame
+  type: custom:grid-layout
+  layout:
+    grid-template-columns: 88px minmax(0, 1fr)
+    grid-template-rows: 100vh
+    grid-template-areas: '"rail main"'
+    mediaquery:
+      "(max-width: 767px)":
+        grid-template-columns: minmax(0, 1fr)
+        grid-template-rows: 56px auto
+        grid-template-areas: '"rail" "main"'
+    margin: 0
+    padding: 0
+    card_margin: 0
+  cards:
+    - type: custom:button-card
+      template: frame_rail
+      view_layout:
+        grid-area: rail
+
+    - type: custom:layout-card
+      layout_type: custom:grid-layout
+      view_layout:
+        grid-area: main
+      layout:
+        grid-template-columns: repeat(2, minmax(0, 1fr))
+        grid-auto-rows: min-content
+        grid-gap: 16px
+        padding: 24px
+        mediaquery:
+          "(max-width: 767px)":
+            grid-template-columns: minmax(0, 1fr)
+            padding: 16px
+        margin: 0
+        card_margin: 0
+      cards:
+        - type: custom:button-card
+          template: frame_heading
+          view_layout:
+            grid-column: 1 / -1
+          variables:
+            title: Cameras
+        - type: custom:button-card
+          template: frame_camera
+          entity: camera.driveway
+          variables:
+            name: Driveway
+            motion: binary_sensor.driveway_motion
+        - type: custom:button-card
+          template: frame_camera
+          entity: camera.garden
+          variables:
+            name: Garden
+            motion: binary_sensor.garden_motion

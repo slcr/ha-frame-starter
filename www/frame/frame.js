@@ -195,22 +195,30 @@ window.frame = {
       type: 'call_service', domain: 'weather', service: 'get_forecasts',
       target: { entity_id: id }, service_data: { type }, return_response: true,
     }), (res) => (((res && res.response) || {})[id] || {}).forecast || []) : null) || [];
-    // Calendar events of the next `days` days for variables.calendars ([{entity, who}]), cached 5 min.
-    // [{who, title, loc, all_day, from, to}] sorted by start.
+    // Calendar events between start and end for variables.calendars ([{entity, who, readonly?}]) or the given list, cached 5 min.
+    // [{who, cal, uid, rid, rrule, title, loc, desc, status, all_day, from, to, readonly}] sorted by start.
     const parse = (s, allDay) => (allDay ? new Date(`${s}T00:00:00`) : new Date(s));
-    const agenda = (days) => {
-      const cals = variables.calendars || [];
+    const events = (start, end, list) => {
+      const cals = list || variables.calendars || [];
       if (!cals.length) return [];
-      const start = day0(new Date()), end = day0(start, days || 7);
-      const key = cals.map((c) => c.entity).join('|') + '@' + start.getTime() + '/' + (days || 7);
+      const key = cals.map((c) => c.entity).join('|') + '@' + start.getTime() + '/' + end.getTime();
       return cached('__frameCal', key, 5, () => Promise.all(cals.map((c) => {
         const q = `?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`;
-        return hass.callApi('GET', `calendars/${c.entity}${q}`).then((list) => list.map((x) => {
+        return hass.callApi('GET', `calendars/${c.entity}${q}`).then((list) => list.filter((x) => x.status !== 'cancelled').map((x) => {
           const allDay = !!(x.start && x.start.date);
-          return { who: c.who || family.id, title: x.summary || '', loc: x.location || '', all_day: allDay,
+          return { who: c.who || family.id, cal: c.entity, uid: x.uid || null, rid: x.recurrence_id || null, rrule: x.rrule || null,
+            title: x.summary || '', loc: x.location || '', desc: x.description || '', status: x.status || '', all_day: allDay, readonly: !!c.readonly,
             from: parse(allDay ? x.start.date : x.start.dateTime, allDay), to: parse(allDay ? x.end.date : x.end.dateTime, allDay) };
         })).catch(() => []);
-      })), (lists) => [].concat(...lists).sort((a, b) => a.from - b.from)) || [];
+      })), (lists) => [].concat(...lists).sort((a, b) => a.from - b.from)) || null;
+    };
+    // The next `days` days from today 0:00 (frame_next, frame_agenda)
+    const agenda = (days) => { const a = day0(new Date()); return events(a, day0(a, days || 7)) || []; };
+    // First day of the week: the profile setting, else the language's (0 = Sunday)
+    const firstWeekday = () => {
+      const W = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      if (W.includes(loc.first_weekday)) return W.indexOf(loc.first_weekday);
+      try { const wi = new Intl.Locale(lang).weekInfo || new Intl.Locale(lang).getWeekInfo(); return wi.firstDay % 7; } catch (e) { return 1; }
     };
 
     // ------------------------------------------------------------ lights
@@ -311,6 +319,7 @@ window.frame = {
       box.style.transform = `translateX(${tip.x < 18 ? 0 : tip.x > 82 ? -100 : -50}%)`;
       if (tip.y != null) { mark.style.left = dot.style.left = tip.x + '%'; dot.style.top = tip.y + '%'; }
       el.classList.toggle('has-dot', tip.y != null);
+      el.querySelectorAll('.bars > *').forEach((b, i) => b.classList.toggle('is-sel', i === tip.i));
       el.classList.add('is-tip');
       clearTimeout(el.__hide);
       if (ev.pointerType !== 'mouse') el.__hide = setTimeout(() => window.__frameTipHide(el), 6000);
@@ -318,8 +327,13 @@ window.frame = {
     window.__frameTipHide = window.__frameTipHide || ((el, ev) => {
       if (ev && ev.pointerType !== 'mouse') return;
       el.classList.remove('is-tip');
+      el.querySelectorAll('.bars .is-sel').forEach((b) => b.classList.remove('is-sel'));
     });
     const TIP = '<span class="ch-mark"></span><span class="ch-dot"></span><div class="ch-tip"></div>';
+    // attributes for a .ch-plot with tooltips; put TIP inside it. tips: [{x (0–100), h (HTML), y?, i? (bar index)}]
+    const tipPlot = (tips) => (tips && tips.length
+      ? ` data-tips="${esc(JSON.stringify(tips))}" onpointerup="__frameTip(event,this)" onpointermove="__frameTip(event,this)" onpointerleave="__frameTipHide(this,event)"`
+      : '');
     // Area sparkline over the last `hours` hours (smooth Catmull-Rom curve).
     // opt: now (current value as last point), minSpan (smallest y range, keeps noise flat),
     //      unit/decimals (enables tooltips), line2 {rows, now, minSpan, unit, decimals} second series as a line.
@@ -371,6 +385,49 @@ window.frame = {
       return r.length >= 20 && Math.max(...r.map((x) => x.max)) - Math.min(...r.map((x) => x.min)) < 0.05;
     };
 
+    // ------------------------------------------------------------ dashboard
+    // This dashboard's config (views, templates), from the Lovelace panel. Found once, then cached.
+    const lovelace = () => {
+      const find = (root, depth) => {
+        if (!root || depth > 8) return null;
+        for (const el of root.querySelectorAll('*')) {
+          if (el.tagName === 'HA-PANEL-LOVELACE') return el;
+          const hit = el.shadowRoot && find(el.shadowRoot, depth + 1);
+          if (hit) return hit;
+        }
+        return null;
+      };
+      let p = window.__framePanel;
+      if (!p || !p.isConnected) p = window.__framePanel = find(document, 0);
+      return (p && p.lovelace && p.lovelace.config) || null;
+    };
+    // The views as rail entries: [{path, label, icon}] (views without a path or with `visible: false` are left out)
+    const views = () => ((lovelace() || {}).views || []).filter((v) => v.path && v.visible !== false)
+      .map((v) => ({ path: v.path, label: v.title || v.path, icon: v.icon || 'mdi:circle-small' }));
+
+    // Optional modules' scripts next to frame.js (calendar.js, flights.js ...), loaded once per page with the same
+    // ?v= as frame.js. Returns true once loaded; until then the card redraws when the script arrives.
+    const load = (name) => {
+      const L = window.__frameLoad || (window.__frameLoad = {});
+      if (L[name] === true) return true;
+      if (!L[name]) {
+        L[name] = { cards: new Set() };
+        import(DIR + name + V).then(() => {
+          const w = L[name].cards;
+          L[name] = true;
+          w.forEach((c) => { if (c.isConnected) c.requestUpdate('_config'); });
+        }).catch((e) => { console.error('Frame: could not load', name, e); L[name] = false; });
+      }
+      if (L[name] && L[name].cards && card && card.requestUpdate) L[name].cards.add(card);
+      return false;
+    };
+
+    // optional/flights: planes overhead, switched on by `flights:` in the household settings (templates/frame.yaml)
+    if (variables.flights && !window.__frameFlightsConfig) {
+      window.__frameFlightsConfig = Object.assign({ dashboard: location.pathname.split('/')[1], dir: DIR, v: V, text: variables.text }, variables.flights);
+      load('flights.js');
+    }
+
     // ------------------------------------------------------------ actions
     window.__frameHass = hass;
     const moreInfo = (el, id) => el.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId: id }, bubbles: true, composed: true }));
@@ -384,8 +441,8 @@ window.frame = {
     });
 
     return { t, lang, h12, pad, esc, nf, time, clock, hourLabel, weekday, dateLong, dateShort, day0, dayDiff, dayLabel, when, dur,
-      ok, fmt, num, nameOf, person, people, family, pstyle, avatar, cached, hist, changes, runs, forecast, agenda,
-      lit, glow, glowStyle, areaLights, coverPos, isOpen, tapAttr, more, TIP, spark, flat, moreInfo };
+      ok, fmt, num, nameOf, person, people, family, pstyle, avatar, cached, hist, changes, runs, forecast, events, agenda, firstWeekday,
+      lit, glow, glowStyle, areaLights, coverPos, isOpen, tapAttr, more, TIP, tipPlot, spark, flat, moreInfo, lovelace, views, load };
   },
 };
 

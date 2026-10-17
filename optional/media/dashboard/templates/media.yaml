@@ -1,0 +1,90 @@
+# Media (optional/media): what's playing, with cover, progress and big buttons.
+#   frame_media        large card: cover, title, artist, progress, previous / play-pause / next, volume
+#   frame_media_mini   a compact row for Home (hidden while nothing plays)
+# entity: one media player, or players: [...] to follow whichever is playing (else the last paused one).
+# Tap the speaker name to switch between players (this device only).
+frame_media_base:
+  template: frame
+  variables:
+    players: []
+    # the player shown: the one picked on this device, else the first playing, else the first paused
+    player: |
+      [[[
+        const list = (variables.players && variables.players.length ? variables.players : entity ? [entity.entity_id] : []).filter((id) => states[id]);
+        const pick = window.__frameMediaPick;
+        if (pick && list.includes(pick)) return pick;
+        return list.find((id) => states[id].state === 'playing') || list.find((id) => states[id].state === 'paused') || list[0] || '';
+      ]]]
+    media: |
+      [[[
+        window.__frameHass = hass;
+        window.__frameMedia = window.__frameMedia || ((el, ev, what) => {
+          ev.stopPropagation();
+          const id = el.dataset.id, h = window.__frameHass, s = h.states[id];
+          if (!s) return;
+          if (what === 'next-player') {
+            const ids = el.dataset.list.split(','), i = ids.indexOf(id);
+            window.__frameMediaPick = ids[(i + 1) % ids.length];
+            const host = el.getRootNode().host;
+            if (host) host.requestUpdate('_config');
+            return;
+          }
+          if (what === 'vol-up' || what === 'vol-down') {
+            const v = Math.max(0, Math.min(1, (s.attributes.volume_level || 0) + (what === 'vol-up' ? 0.05 : -0.05)));
+            return h.callService('media_player', 'volume_set', { entity_id: id, volume_level: Math.round(v * 100) / 100 });
+          }
+          h.callService('media_player', what, { entity_id: id });
+        });
+        return true;
+      ]]]
+
+frame_media:
+  template: frame_media_base
+  update_timer: 5s
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const T = (k, d) => (variables.text || {})[k] || d;
+        const id = variables.player, s = states[id];
+        if (!s) return `<div class="md md--empty"><span class="label">${T('md_title', 'Music')}</span><div class="free"><i>${T('md_none', 'Nothing playing')}</i></div></div>`;
+        const a = s.attributes, on = s.state === 'playing', idle = !['playing', 'paused'].includes(s.state);
+        const list = (variables.players && variables.players.length ? variables.players : [id]).filter((x) => states[x]);
+        const pos = a.media_position != null ? a.media_position + (on && a.media_position_updated_at ? (Date.now() - Date.parse(a.media_position_updated_at)) / 1000 : 0) : null;
+        const pct = pos != null && a.media_duration ? Math.min(100, pos / a.media_duration * 100) : null;
+        const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
+        const btn = (what, icon, cls) => `<button class="md-btn${cls ? ' ' + cls : ''}" data-id="${id}" onpointerup="__frameMedia(this,event,'${what}')"><ha-icon icon="${icon}"></ha-icon></button>`;
+        const vol = a.volume_level != null ? Math.round(a.volume_level * 100) : null;
+        return `<div class="md">
+          <div class="md-art">${a.entity_picture ? `<img src="${fx.esc(a.entity_picture)}" alt="">` : '<ha-icon icon="mdi:music"></ha-icon>'}</div>
+          <div class="md-main">
+            <button class="md-who" data-id="${id}" data-list="${list.join(',')}" onpointerup="__frameMedia(this,event,'next-player')">
+              <ha-icon icon="mdi:speaker"></ha-icon>${fx.esc(fx.nameOf(id))}${list.length > 1 ? '<ha-icon icon="mdi:swap-horizontal"></ha-icon>' : ''}</button>
+            <b class="md-title">${idle ? T('md_none', 'Nothing playing') : fx.esc(a.media_title || '')}</b>
+            <span class="md-artist">${idle ? '' : fx.esc(a.media_artist || a.media_album_name || a.app_name || '')}</span>
+            ${pct != null ? `<div class="md-prog"><div class="bar"><i style="width:${pct}%"></i></div><span>${mmss(pos)}</span><span>${mmss(a.media_duration)}</span></div>` : ''}
+            <div class="md-ctl">${btn('media_previous_track', 'mdi:skip-previous')}${btn('media_play_pause', on ? 'mdi:pause' : 'mdi:play', 'is-main')}${btn('media_next_track', 'mdi:skip-next')}
+              ${vol != null ? `<span class="md-vol">${btn('vol-down', 'mdi:volume-minus')}<b class="num">${vol}</b>${btn('vol-up', 'mdi:volume-plus')}</span>` : ''}</div>
+          </div></div>`;
+      ]]]
+
+frame_media_mini:
+  template: frame_media_base
+  update_timer: 10s
+  hidden: "[[[ const s = states[variables.player]; return !variables.fx || !s || !['playing', 'paused'].includes(s.state); ]]]"
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const id = variables.player, s = states[id];
+        if (!s) return '';
+        const a = s.attributes, on = s.state === 'playing';
+        return `<div class="blk mm"><div class="blk-row">
+          <span class="mm-art">${a.entity_picture ? `<img src="${fx.esc(a.entity_picture)}" alt="">` : '<ha-icon icon="mdi:music"></ha-icon>'}</span>
+          <span class="blk-main"><b>${fx.esc(a.media_title || fx.nameOf(id))}</b><span>${fx.esc([a.media_artist, fx.nameOf(id)].filter(Boolean).join(' · '))}</span></span>
+          <button class="md-btn is-main" data-id="${id}" onpointerup="__frameMedia(this,event,'media_play_pause')"><ha-icon icon="${on ? 'mdi:pause' : 'mdi:play'}"></ha-icon></button>
+          <button class="md-btn" data-id="${id}" onpointerup="__frameMedia(this,event,'media_next_track')"><ha-icon icon="mdi:skip-next"></ha-icon></button>
+        </div></div>`;
+      ]]]

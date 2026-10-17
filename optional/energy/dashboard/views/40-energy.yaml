@@ -1,0 +1,93 @@
+# Energy page (optional/energy). Works with the sources from Home Assistant's energy dashboard;
+# set the sensors below to yours (or delete the cards you don't have).
+- title: Energy
+  path: energy
+  icon: mdi:lightning-bolt-outline
+  theme: Frame
+  type: custom:grid-layout
+  layout:
+    grid-template-columns: 88px minmax(0, 1fr)
+    grid-template-rows: 100vh
+    grid-template-areas: '"rail main"'
+    mediaquery:
+      "(max-width: 767px)":
+        grid-template-columns: minmax(0, 1fr)
+        grid-template-rows: 56px auto
+        grid-template-areas: '"rail" "main"'
+    margin: 0
+    padding: 0
+    card_margin: 0
+  cards:
+    - type: custom:button-card
+      template: frame_rail
+      view_layout:
+        grid-area: rail
+
+    - type: custom:layout-card
+      layout_type: custom:grid-layout
+      view_layout:
+        grid-area: main
+      layout:
+        grid-template-columns: repeat(2, minmax(0, 1fr))
+        grid-template-rows: 168px minmax(0, 1fr) minmax(0, 1fr)
+        grid-template-areas: |
+          "kpi kpi"
+          "today price"
+          "days power"
+        grid-gap: 16px
+        height: calc(100vh - 48px)
+        padding: 24px
+        mediaquery:
+          "(max-width: 767px)":
+            grid-template-columns: minmax(0, 1fr)
+            grid-template-rows: auto 280px 280px 280px 280px
+            grid-template-areas: '"kpi" "today" "price" "days" "power"'
+            height: auto
+            padding: 16px
+        margin: 0
+        card_margin: 0
+      cards:
+        - type: custom:button-card
+          template: frame_energy
+          view_layout:
+            grid-area: kpi
+          variables:
+            power: sensor.house_power
+            solar_power: sensor.solar_power
+            solar_max: 4000
+
+        - type: custom:button-card
+          template: frame_energy_bars
+          view_layout:
+            grid-area: today
+          variables:
+            period: hour
+
+        - type: custom:button-card
+          template: frame_prices
+          entity: sensor.electricity_price
+          view_layout:
+            grid-area: price
+
+        - type: custom:button-card
+          template: frame_energy_bars
+          view_layout:
+            grid-area: days
+          variables:
+            period: day
+            days: 30
+            title: Last 30 days
+
+        - type: custom:button-card
+          template: frame_chart
+          entity: sensor.house_power
+          view_layout:
+            grid-area: power
+          variables:
+            title: Power · last 12 hours
+            kind: area
+            hours: 12
+            period: 5minute
+            scale: 0.001
+            unit: kW
+            decimals: 1

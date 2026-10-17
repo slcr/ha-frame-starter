@@ -1,0 +1,42 @@
+# Calendar page (optional/calendar). Uses `calendars` from templates/frame.yaml.
+- title: Calendar
+  path: calendar
+  icon: mdi:calendar-blank-outline
+  theme: Frame
+  type: custom:grid-layout
+  layout:
+    grid-template-columns: 88px minmax(0, 1fr)
+    grid-template-rows: 100vh
+    grid-template-areas: '"rail main"'
+    mediaquery:
+      "(max-width: 767px)":
+        grid-template-columns: minmax(0, 1fr)
+        grid-template-rows: 56px auto
+        grid-template-areas: '"rail" "main"'
+    margin: 0
+    padding: 0
+    card_margin: 0
+  cards:
+    - type: custom:button-card
+      template: frame_rail
+      view_layout:
+        grid-area: rail
+
+    - type: custom:layout-card
+      layout_type: custom:grid-layout
+      view_layout:
+        grid-area: main
+      layout:
+        grid-template-columns: minmax(0, 1fr)
+        grid-template-rows: 1fr
+        height: calc(100vh - 48px)
+        padding: 24px
+        mediaquery:
+          "(max-width: 767px)":
+            height: calc(100svh - 56px - 32px)
+            padding: 16px
+        margin: 0
+        card_margin: 0
+      cards:
+        - type: custom:button-card
+          template: frame_calendar

@@ -1,0 +1,47 @@
+# Setup: onboarding. Checks the install, lists example entities you still need to replace, writes
+# YAML for the modules from your own Home Assistant and shows which optional modules fit. Delete this
+# file when you are done; the rail drops the page by itself.
+- title: Setup
+  path: setup
+  icon: mdi:tune-variant
+  theme: Frame
+  type: custom:grid-layout
+  layout:
+    grid-template-columns: 88px minmax(0, 1fr)
+    grid-template-rows: 100vh
+    grid-template-areas: '"rail main"'
+    mediaquery:
+      "(max-width: 767px)":
+        grid-template-columns: minmax(0, 1fr)
+        grid-template-rows: 56px auto
+        grid-template-areas: '"rail" "main"'
+    margin: 0
+    padding: 0
+    card_margin: 0
+  cards:
+    - type: custom:button-card
+      template: frame_rail
+      view_layout:
+        grid-area: rail
+
+    # scrolls on its own, the rail stays put
+    - type: custom:layout-card
+      layout_type: custom:grid-layout
+      view_layout:
+        grid-area: main
+      layout:
+        grid-template-columns: minmax(0, 1fr)
+        grid-auto-rows: min-content
+        height: 100vh
+        overflow-y: auto
+        box-sizing: border-box
+        padding: 32px 40px
+        mediaquery:
+          "(max-width: 767px)":
+            height: auto
+            padding: 16px
+        margin: 0
+        card_margin: 0
+      cards:
+        - type: custom:button-card
+          template: frame_setup

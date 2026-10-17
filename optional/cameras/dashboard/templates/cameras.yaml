@@ -1,0 +1,84 @@
+# Cameras (optional/cameras): a live tile per camera, played with Home Assistant's own player (WebRTC/HLS),
+# a still image underneath until the video runs. Name and "Motion" on top, last motion bottom right.
+# Tap: full screen with controls. entity: a camera with a stream.
+#   motion:   binary_sensor for motion (optional): red badge while on, "last motion" from it
+#   snapshot: another camera entity for the still (optional, e.g. a high-resolution snapshot camera)
+#   live:     false = only the still image, refreshed every 10 s (saves battery and bandwidth)
+frame_camera:
+  template: frame
+  update_timer: 30s
+  variables:
+    name: ""
+    motion: ""
+    snapshot: ""
+    live: true
+  styles:
+    card:
+      - height: auto
+      - aspect-ratio: 16 / 9
+      - border-radius: 18px
+      - overflow: hidden
+      - background: "#111111"
+  custom_fields:
+    # the player sits in its own field whose HTML never changes, so redraws leave the video running
+    video: '<div class="cam-vid"></div>'
+    body: |
+      [[[
+        const fx = variables.fx, card = this;
+        if (!fx) return '';
+        const T = (k, d) => (variables.text || {})[k] || d;
+        const s = entity, name = variables.name || (s ? fx.nameOf(s.entity_id) : '');
+        const snap = states[variables.snapshot] || s;
+        const mo = variables.motion && states[variables.motion];
+        const moving = mo && mo.state === 'on';
+        window.__frameHass = hass;
+        // full screen: the biggest 16:9 that fits, closes with X, a tap beside it or Esc
+        window.__frameCamOpen = window.__frameCamOpen || ((el, ev) => {
+          ev.stopPropagation();
+          const h = window.__frameHass, st = h && h.states[el.dataset.entity];
+          if (!st || !customElements.get('ha-camera-stream')) return;
+          const v = document.createElement('ha-camera-stream');
+          Object.assign(v, { hass: h, stateObj: st, muted: true, controls: true, allowExoPlayer: true, fitMode: 'contain' });
+          const w = document.createElement('div');
+          w.className = 'cv-wrap';
+          w.innerHTML = `<div class="cv-head"><b></b><span>Live</span><button class="cv-x" aria-label="Close"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="cv-box"></div>`;
+          w.querySelector('b').textContent = el.dataset.name || '';
+          const img = el.getRootNode().querySelector('.cam-vid > img');
+          if (img) { const p = document.createElement('img'); p.src = img.src; w.querySelector('.cv-box').appendChild(p); }
+          w.querySelector('.cv-box').appendChild(v);
+          const key = (e) => { if (e.key === 'Escape') close(); };
+          const close = () => { document.removeEventListener('keydown', key); w.remove(); };
+          w.addEventListener('pointerup', (e) => { e.stopPropagation(); if (e.target === w || e.target.closest('.cv-x')) close(); });
+          document.addEventListener('keydown', key);
+          el.getRootNode().appendChild(w);
+        });
+        // put the still and the player in once (after drawing); later only hand over hass
+        setTimeout(() => {
+          const box = card.shadowRoot && card.shadowRoot.querySelector('.cam-vid');
+          if (!box || !s) return;
+          const pic = snap && snap.attributes.entity_picture;
+          let img = box.querySelector('img');
+          if (pic && (!img || !variables.live)) {
+            if (!img) { img = document.createElement('img'); box.appendChild(img); }
+            img.src = `${pic}${pic.includes('?') ? '&' : '?'}width=1280&height=720&t=${Math.floor(Date.now() / 10000)}`;
+          }
+          if (!variables.live) return;
+          const cur = box.querySelector('ha-camera-stream');
+          if (cur) { cur.hass = hass; return; }
+          const mk = () => {
+            if (box.querySelector('ha-camera-stream')) return;
+            const el = document.createElement('ha-camera-stream');
+            Object.assign(el, { hass, stateObj: hass.states[s.entity_id], muted: true, controls: false, allowExoPlayer: true, fitMode: 'cover' });
+            box.appendChild(el);
+          };
+          if (customElements.get('ha-camera-stream')) mk();
+          else if (window.loadCardHelpers) window.loadCardHelpers()
+            .then((h) => { h.createCardElement({ type: 'picture-entity', entity: s.entity_id, camera_view: 'live' }); return customElements.whenDefined('ha-camera-stream'); })
+            .then(mk);
+        }, 0);
+        return `<div class="cam-big" data-entity="${s ? s.entity_id : ''}" data-name="${fx.esc(name)}" onpointerup="__frameCamOpen(this,event)">
+          ${!s || s.state === 'unavailable' ? `<span class="cam-off">${fx.t('unavailable')}</span>` : ''}
+          <span class="cam-big-name">${fx.esc(name)}</span>
+          ${moving ? `<span class="cam-mov">${T('cam_motion', 'Motion')}</span>` : ''}
+          ${mo && !moving && fx.ok(variables.motion) ? `<span class="cam-big-last">${T('cam_last', 'Motion')} ${fx.when(new Date(mo.last_changed))}</span>` : ''}</div>`;
+      ]]]

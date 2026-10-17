@@ -1,0 +1,148 @@
+# Calendar page (optional/calendar): day, 3 days, week or month from `calendars` in templates/frame.yaml,
+# in the colours of their people. Tap an empty spot for a new event, an event for details (edit, delete),
+# hold and drag an event to move it, swipe or scroll sideways to turn pages. The taps live in
+# www/frame/calendar.js. View and page are remembered per device; after 5 minutes it returns to today.
+# Calendars marked `readonly: true` in `calendars` are shown but can't be changed (holidays, shared ones).
+frame_calendar:
+  template: frame
+  update_timer: 60s
+  variables:
+    # first and last hour of the time grid
+    start_hour: 7
+    end_hour: 22
+    # default view: day | three | week | month
+    view: week
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const card = this, now = new Date(), t0 = fx.day0(now);
+        const ready = fx.load('calendar.js');
+        const ui = window.__frameCalUI || {};
+        // view and page per device; back to today after 5 minutes
+        const S = window.__frameCalState || (window.__frameCalState = { mode: variables.view, off: 0, at: 0 });
+        if (S.off && Date.now() - S.at > 5 * 60000) S.off = 0;
+        const reload = () => { if (card.isConnected) card.requestUpdate('_config'); };
+        window.__frameCalSet = (mode, step) => {
+          if (mode) { S.mode = mode; S.off = 0; }
+          if (step != null) S.off = step === 0 ? 0 : S.off + step;
+          S.at = Date.now();
+          reload();
+        };
+        if (ready && ui.init) ui.init({ fx, hass, root: card.shadowRoot, reload, calendars: variables.calendars, text: variables.text,
+          go: (step) => window.__frameCalSet(null, step) });
+        const mode = ['day', 'three', 'week', 'month'].includes(S.mode) ? S.mode : 'week', off = S.off;
+        const same = (a, b) => a.getTime() === b.getTime();
+        const L = fx.lang, T = (k, d) => (variables.text || {})[k] || d;
+        const fmt = (d, o) => d.toLocaleDateString(L, o);
+        const fw = fx.firstWeekday();
+
+        // ---------- head: title, views, paging
+        const seg = (m, label) => `<button class="cal-seg${mode === m ? ' is-on' : ''}" onpointerup="__frameCalSet('${m}')">${label}</button>`;
+        const arrow = (step, icon) => `<button class="cal-seg cal-arrow" onpointerup="__frameCalSet(null, ${step})"><ha-icon icon="${icon}"></ha-icon></button>`;
+        const add = `<button class="cal-add" onpointerup="window.__frameCalUI && __frameCalUI.create && __frameCalUI.create()"><ha-icon icon="mdi:plus"></ha-icon>${T('cal_add', 'Event')}</button>`;
+        let title, sub;
+        let start, N;
+        if (mode === 'month') {
+          const m0 = new Date(now.getFullYear(), now.getMonth() + off, 1);
+          title = fmt(m0, { month: 'long' }); sub = String(m0.getFullYear());
+          start = fx.day0(m0, -((m0.getDay() - fw + 7) % 7)); N = 42;
+        } else {
+          N = mode === 'day' ? 1 : mode === 'three' ? 3 : 7;
+          start = N === 7 ? fx.day0(now, off * 7 - (now.getDay() - fw + 7) % 7) : fx.day0(now, off * N);
+          const b = fx.day0(start, N - 1);
+          if (N === 1) { title = fmt(start, { weekday: 'long', day: 'numeric', month: 'long' }); sub = fx.dayDiff(start, now) >= -1 && fx.dayDiff(start, now) <= 1 ? fx.dayLabel(start, now) : String(start.getFullYear()); }
+          else {
+            title = start.getMonth() === b.getMonth() ? `${fmt(start, { day: 'numeric' })}–${fmt(b, { day: 'numeric', month: 'long' })}` : `${fmt(start, { day: 'numeric', month: 'short' })} – ${fmt(b, { day: 'numeric', month: 'short' })}`;
+            // ISO week of the first day
+            const u = new Date(Date.UTC(start.getFullYear(), start.getMonth(), start.getDate()));
+            u.setUTCDate(u.getUTCDate() + 4 - (u.getUTCDay() || 7));
+            const wk = Math.ceil(((u - Date.UTC(u.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7);
+            sub = `${T('cal_week', 'Week')} ${wk}${off === 0 ? ` · ${N === 3 ? T('cal_from_today', 'from today') : T('cal_this_week', 'this week')}` : ''}`;
+          }
+        }
+        const head = `<div class="cal-top"><div class="cal-title"><b>${fx.esc(title)}</b><span class="label">${fx.esc(sub)}</span>${add}</div>
+          <div class="cal-segs">${seg('day', T('cal_day', 'Day'))}${seg('three', T('cal_three', '3 days'))}${seg('week', T('cal_week', 'Week'))}${seg('month', T('cal_month', 'Month'))}
+          <span class="cal-gap"></span>${arrow(-1, 'mdi:chevron-left')}<button class="cal-seg${off === 0 ? ' is-on' : ''}" onpointerup="__frameCalSet(null, 0)">${fx.t('today')}</button>${arrow(1, 'mdi:chevron-right')}</div></div>`;
+
+        const end = fx.day0(start, N);
+        const evs = fx.events(start, end);
+        if (ui.init) ui.evs = evs || [];
+        const idx = (e) => (evs || []).indexOf(e);
+        const tapAt = (d, extra) => ` data-day="${d.getTime()}"${extra || ''} onpointerup="window.__frameCalUI && __frameCalUI.tap && __frameCalUI.tap(event,this)"`;
+        const gestures = ' onpointerdown="window.__frameCalUI && __frameCalUI.swipe && __frameCalUI.swipe(event,this)" onwheel="window.__frameCalUI && __frameCalUI.wheel && __frameCalUI.wheel(event,this)"';
+        const legend = `<div class="cal-legend">${(variables.calendars || []).map((c) => fx.person(c.who))
+          .filter((p, i, a) => a.indexOf(p) === i).map((p) => `<span style="${fx.pstyle(p)}"><i></i>${fx.esc(p.name)}</span>`).join('')}</div>`;
+        const loading = evs ? '' : '<span class="cal-load label">…</span>';
+
+        // ---------- month
+        if (mode === 'month') {
+          const m0 = new Date(now.getFullYear(), now.getMonth() + off, 1);
+          const dows = [...Array(7)].map((_, i) => `<div class="cm-dow">${fmt(fx.day0(start, i), { weekday: 'short' })}</div>`).join('');
+          const cells = [...Array(42)].map((_, i) => {
+            const d0 = fx.day0(start, i), d1 = fx.day0(start, i + 1);
+            const list = (evs || []).filter((e) => e.from < d1 && e.to > d0).sort((a, b) => (b.all_day - a.all_day) || (a.from - b.from));
+            const items = list.slice(0, 4).map((e) => `<div class="cm-ev${e.all_day ? ' is-ad' : ''}" data-i="${idx(e)}" style="${fx.pstyle(fx.person(e.who))}"><i></i>${e.all_day ? '' : `<em>${fx.time(e.from)}</em>`}<span>${fx.esc(e.title)}</span></div>`).join('');
+            const cls = [d0.getMonth() !== m0.getMonth() ? 'is-out' : '', same(d0, t0) ? 'is-today' : '', d0 < t0 ? 'is-past' : ''].join(' ');
+            return `<div class="cm-day ${cls}"${tapAt(d0)}><span class="cm-n num">${d0.getDate()}</span>${items}${list.length > 4 ? `<span class="cm-more">+${list.length - 4}</span>` : ''}</div>`;
+          }).join('');
+          return `<div class="calp">${head}<div class="cal"${gestures}>${loading}<div class="cm">${dows}${cells}</div>${legend}</div></div>`;
+        }
+
+        // ---------- time grid
+        const H0 = variables.start_hour, H1 = variables.end_hour, span = H1 - H0;
+        const days = [...Array(N)].map((_, i) => fx.day0(start, i));
+        const maxCols = N === 7 ? 3 : 5;
+        const pct = (d, d0) => Math.min(100, Math.max(0, ((d - d0) / 3600000 - H0) / span * 100));
+        const movable = (e) => !e.readonly && e.uid && e.cal && (!(e.rid || e.rrule) || e.rid);
+        const dhead = '<div></div>' + days.map((d) => `<div class="${same(d, t0) ? 'is-today' : ''}"${tapAt(d, ' data-allday="1"')}>${N === 7
+          ? `<b>${fmt(d, { weekday: 'short' })}</b><span class="num">${d.getDate()}</span>`
+          : `<span class="num">${d.getDate()}</span><b>${fx.dayLabel(d, now)}</b><em>${fmt(d, { month: 'short' })}</em>`}</div>`).join('');
+        const ad = (evs || []).filter((e) => e.all_day && e.to > start && e.from < end).map((e) => {
+          const a = Math.max(0, Math.round((fx.day0(e.from) - start) / 864e5)), b = Math.min(N, Math.round((fx.day0(e.to) - start) / 864e5));
+          return `<div class="cw-ad${movable(e) ? ' can-drag' : ''}" data-i="${idx(e)}"${movable(e) ? ' onpointerdown="window.__frameCalUI && __frameCalUI.drag && __frameCalUI.drag(event,this)"' : ''}
+            onpointerup="window.__frameCalUI && __frameCalUI.tap && __frameCalUI.tap(event,this)" style="grid-column:${a + 2} / ${Math.max(a + 1, b) + 2};${fx.pstyle(fx.person(e.who))}">${fx.esc(e.title)}</div>`;
+        }).join('');
+        const hours = [...Array(span + 1)].map((_, i) => H0 + i);
+        const hourLabels = hours.filter((h) => h > H0 && h < H1).map((h) => `<span class="cw-hour" style="top:${(h - H0) / span * 100}%">${fx.hourLabel(new Date(2024, 0, 1, h)).replace(':00', '')}</span>`).join('');
+        const lines = hours.slice(1, -1).map((h) => `<div class="cw-line" style="top:${(h - H0) / span * 100}%"></div>`).join('');
+        const cols = days.map((d0) => {
+          const d1 = fx.day0(d0, 1);
+          const list = (evs || []).filter((e) => !e.all_day && e.from < d1 && e.to > d0)
+            .map((e) => ({ e, top: pct(e.from < d0 ? d0 : e.from, d0), bot: pct(e.to > d1 ? d1 : e.to, d0) }))
+            .filter((x) => x.bot > x.top || x.top < 100).sort((a, b) => a.top - b.top || b.bot - a.bot);
+          // overlaps: spread over columns, at most 3 (week) or 5 side by side
+          const placed = [], more = [];
+          let cluster = [], clusterEnd = -1;
+          const flush = () => {
+            const n = Math.min(maxCols, Math.max(1, ...cluster.map((c) => c.col + 1)));
+            cluster.forEach((c) => { if (c.col < maxCols) { c.n = n; placed.push(c); } else more.push(c); });
+            cluster = [];
+          };
+          list.forEach((x) => {
+            if (x.top >= clusterEnd && cluster.length) flush();
+            const used = cluster.filter((c) => c.bot > x.top).map((c) => c.col);
+            let col = 0; while (used.includes(col)) col++;
+            cluster.push(Object.assign(x, { col }));
+            clusterEnd = Math.max(clusterEnd, x.bot);
+          });
+          if (cluster.length) flush();
+          const blocks = placed.map((x) => {
+            const e = x.e, h = Math.max(x.bot - x.top, 100 / span / 2), short = (x.bot - x.top) < 100 / span * 0.9;
+            const cls = ['cw-ev', short ? 'is-short' : '', e.to <= now ? 'is-past' : '', e.from <= now && e.to > now ? 'is-now' : '',
+              movable(e) ? 'can-drag' : '', e.status === 'tentative' ? 'is-tent' : ''].join(' ');
+            return `<div class="${cls}" data-i="${idx(e)}"${movable(e) ? ' onpointerdown="window.__frameCalUI && __frameCalUI.drag && __frameCalUI.drag(event,this)"' : ''}
+              style="top:${x.top}%;height:calc(${h}% - 2px);left:calc(${x.col / x.n * 100}% + 3px);width:calc(${100 / x.n}% - 6px);${fx.pstyle(fx.person(e.who))}">
+              <b>${fx.esc(e.title)}</b><small>${fx.time(e.from)}${short ? '' : '–' + fx.time(e.to)}${e.rid || e.rrule ? ' ↻' : ''}</small></div>`;
+          }).join('');
+          const nowLine = same(d0, t0) && now.getHours() >= H0 && now.getHours() < H1 ? `<div class="cw-now" style="top:${pct(now, d0)}%"></div>` : '';
+          const badge = more.length ? `<span class="cw-more" style="top:${more[0].top}%">+${more.length}</span>` : '';
+          return `<div class="cw-col${same(d0, t0) ? ' is-today' : ''}"${tapAt(d0, ` data-h0="${H0}" data-span="${span}"`)}>${lines}${blocks}${badge}${nowLine}</div>`;
+        }).join('');
+        return `<div class="calp">${head}<div class="cal${N < 7 ? ' is-few' : ''}" style="position:relative;--n:${N}"${gestures}>${loading}
+          <div class="cw-head">${dhead}</div>
+          <div class="cw-allday"><div></div>${ad}<div class="cw-adbg"><div></div>${days.map((d) => `<div class="${same(d, t0) ? 'is-today' : ''}"></div>`).join('')}</div></div>
+          <div class="cw-body"><div class="cw-hours">${hourLabels}</div>${cols}</div>
+          ${legend}</div></div>`;
+      ]]]

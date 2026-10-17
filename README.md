@@ -16,6 +16,21 @@ It's built from [button-card](https://github.com/custom-cards/button-card) templ
 | ![Setup](docs/screenshots/setup.png) | **Setup page:** checks resources, fonts, theme and weather, then lists every entity in the dashboard that doesn't exist in your Home Assistant yet, with likely matches. |
 | ![YAML generator](docs/screenshots/setup-generator.png) | **YAML generator:** people, calendars, lights by area, covers, climate, scenes and contacts, built from what your Home Assistant already has. Copy, paste, done. |
 
+## Optional modules
+
+Add what fits your home: each is a folder in [`optional/`](optional/) that adds a page or a card, installed with one command. The Setup page shows which ones match what your Home Assistant already has.
+
+| | |
+| --- | --- |
+| ![Calendar](docs/screenshots/calendar-week.png) | **[Calendar](optional/calendar/):** day, 3 days, week and month. Tap to add, hold and drag to move, edit and delete, with undo. |
+| ![Energy](docs/screenshots/energy.png) | **[Energy](optional/energy/):** straight from your energy dashboard settings. Use, solar, grid, self-sufficiency, per hour and per day, and electricity prices with the cheapest hours marked. |
+| ![Plane over Home](docs/screenshots/home-plane.png) | **[Planes overhead](optional/flights/):** Flightradar24 aircraft fly across the screen in their real direction. Tap the tag for a flight card over a flight through the clouds. |
+| ![Flight card](docs/screenshots/flight-card.jpg) | The flight card shows route and progress, delay, landing time, aircraft, altitude and speed. |
+| ![Rubbish and appliances on Home](docs/screenshots/home.png) | **[Rubbish](optional/rubbish/)** with painted bins and a "put out tonight" reminder, **[appliances](optional/appliances/)** while they run or are finished, and a **[mini player](optional/media/)**. |
+| ![Music](docs/screenshots/music.png) | **[Music](optional/media/):** what's playing, big, following whichever player is on. |
+| ![Cameras](docs/screenshots/cameras.jpg) | **[Cameras](optional/cameras/):** live tiles with motion; tap for full screen. |
+| ![Screensaver](docs/screenshots/screensaver.jpg) | **[Screensaver](optional/screensaver/):** a photo slideshow (WallPanel) with clock, weather and the next event. |
+
 It works on phones too. Under 768 px everything becomes one scrolling column and the rail turns into a top bar.
 
 <p>
@@ -43,23 +58,36 @@ It works on phones too. Under 768 px everything becomes one scrolling column and
 | `frame_heading` | Section heading |
 | `frame_setup` | The onboarding page |
 
-[docs/modules.md](docs/modules.md) lists every option.
+[docs/modules.md](docs/modules.md) lists every option. The optional modules bring their own templates, documented in their READMEs.
 
 ## Quick start
 
 You need Home Assistant 2024.4 or newer, [HACS](https://hacs.xyz) with **button-card** and **layout-card**, and optionally **kiosk-mode** to hide the header and sidebar.
 
-1. Copy `www/frame` to `/config/www/frame`, `dashboard` to `/config/frame` and `themes/frame.yaml` to your themes folder.
+1. Get the repo onto your Home Assistant and run `./install.sh` (add optional modules by name: `./install.sh calendar energy`).
 2. Register the dashboard in `configuration.yaml` and add two resources: `/local/frame/frame.js?v=1` and the Google Fonts stylesheet.
 3. Restart Home Assistant, open **Frame** in the sidebar and go to **Setup**.
 
-The full walkthrough, including copy-paste snippets and a one-line install over SSH, is in [docs/getting-started.md](docs/getting-started.md).
+The full walkthrough, with copy-paste snippets, is in [docs/getting-started.md](docs/getting-started.md). Running `./install.sh` again later updates the code but keeps your settings and views.
 
 ## Make it yours
 
-- **Your household:** `people`, `calendars` and `weather` live at the top of `dashboard/templates.yaml`. The Setup page generates them for you.
-- **Your rooms:** edit `dashboard/views/*.yaml` and paste in the cards the Setup page writes.
+- **Your household:** `people`, `calendars` and `weather` live in `templates/frame.yaml`. The Setup page generates them for you.
+- **Your rooms:** edit `views/*.yaml` and paste in the cards the Setup page writes. The rail lists every view on its own, using its `title` and `icon`.
 - **Colours, fonts, language and your own modules:** see [docs/customizing.md](docs/customizing.md). Dates and numbers already follow your Home Assistant locale, and every UI string can be overridden.
+
+## How it's put together
+
+```
+dashboard/            → /config/frame
+  frame.yaml          the dashboard: loads every file in templates/ and views/
+  templates/          frame.yaml (your household), core.yaml (modules), setup.yaml
+  views/              10-home, 20-house, 90-setup (in file name order)
+www/frame/            → /config/www/frame: frame.js (runtime), frame.css, grain.png
+themes/frame.yaml     → /config/themes
+optional/*/           the same layout per module
+install.sh            copies all of it
+```
 
 ## Why a runtime file?
 
@@ -67,7 +95,7 @@ button-card evaluates each template's JavaScript on every render. Frame keeps it
 
 ## Credits
 
-The design started from the idea behind [wesbos/photo-frame-dashboard](https://github.com/wesbos/photo-frame-dashboard). Type is [Archivo](https://fonts.google.com/specimen/Archivo) and [Instrument Serif](https://fonts.google.com/specimen/Instrument+Serif). Icons are [Material Design Icons](https://pictogrammers.com/library/mdi/). The screenshots use demo data.
+The design started from the idea behind [wesbos/photo-frame-dashboard](https://github.com/wesbos/photo-frame-dashboard). Type is [Archivo](https://fonts.google.com/specimen/Archivo) and [Instrument Serif](https://fonts.google.com/specimen/Instrument+Serif). Icons are [Material Design Icons](https://pictogrammers.com/library/mdi/). The flight card's clouds follow [mrdoob's WebGL clouds](https://mrdoob.com/lab/javascript/webgl/clouds/). The plane and bin pictures were generated for this project. The screenshots use demo data; the camera and slideshow photos are from [Pexels](https://www.pexels.com/license/) and [Unsplash](https://unsplash.com/license).
 
 ## License
 

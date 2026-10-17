@@ -1,0 +1,262 @@
+# Energy page (optional/energy). Reads the sources you set up in Home Assistant's energy dashboard
+# (Settings → Dashboards → Energy): grid, solar, battery. Nothing to list here; add live power sensors
+# if you have them.
+#
+#   frame_energy        four big numbers: using now, solar, grid, self-sufficiency (tap for details)
+#   frame_energy_bars   consumption per hour today or per day, solar share in yellow
+#   frame_chart         any sensor as an area chart (e.g. power, last 12 hours) or as bars per day/month
+#   frame_prices        electricity price per hour, today and tomorrow, cheapest hours in green
+
+# The energy sources from HA's energy settings, shared by the energy cards: {gridIn, gridOut, solar, batIn, batOut, cost}
+# (lists of statistic ids). Cached for the page.
+frame_energy_base:
+  template: frame
+  variables:
+    sources: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return null;
+        const prefs = fx.cached('__frameEnergy', 'prefs', 30, () => hass.callWS({ type: 'energy/get_prefs' }));
+        if (!prefs) return null;
+        const out = { gridIn: [], gridOut: [], solar: [], batIn: [], batOut: [], cost: [] };
+        (prefs.energy_sources || []).forEach((s) => {
+          if (s.type === 'grid') {
+            (s.flow_from || []).forEach((f) => { out.gridIn.push(f.stat_energy_from); if (f.stat_cost) out.cost.push(f.stat_cost); });
+            (s.flow_to || []).forEach((f) => out.gridOut.push(f.stat_energy_to));
+            if (s.stat_energy_from) out.gridIn.push(s.stat_energy_from);
+            if (s.stat_energy_to) out.gridOut.push(s.stat_energy_to);
+            if (s.stat_cost) out.cost.push(s.stat_cost);
+          }
+          if (s.type === 'solar') out.solar.push(s.stat_energy_from);
+          if (s.type === 'battery') { out.batOut.push(s.stat_energy_from); out.batIn.push(s.stat_energy_to); }
+        });
+        Object.keys(out).forEach((k) => { out[k] = out[k].filter(Boolean); });
+        return out;
+      ]]]
+    # Sum of the hourly/daily change of a list of statistics: {time: kWh}. `rows` = statistics result.
+    sum: |
+      [[[
+        return (rows, ids) => {
+          const o = {};
+          (ids || []).forEach((id) => (rows[id] || []).forEach((r) => {
+            if (r.change == null) return;
+            const t = typeof r.start === 'number' ? r.start : Date.parse(r.start);
+            o[t] = (o[t] || 0) + Math.max(0, r.change);
+          }));
+          return o;
+        };
+      ]]]
+
+# Four tiles. power: whole-house power sensor (W), solar_power: solar power sensor (W), solar_max: peak power
+# of your solar in W (for the bar). All optional; without them the tiles show today's totals.
+frame_energy:
+  template: frame_energy_base
+  update_timer: 60s
+  variables:
+    power: ""
+    solar_power: ""
+    solar_max: 0
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx, src = variables.sources;
+        if (!fx) return '';
+        const T = (k, d) => (variables.text || {})[k] || d;
+        if (!src) return `<div class="kpis"><div class="kpi"><span class="label">${T('en_title', 'Energy')}</span><span class="kpi-sub">…</span></div></div>`;
+        const now = new Date(), t0 = fx.day0(now);
+        const all = [].concat(src.gridIn, src.gridOut, src.solar, src.batIn, src.batOut, src.cost);
+        const hours = Math.max(1, Math.ceil((now - t0) / 3600000));
+        const rows = all.length ? fx.hist(all, hours, 10, 'hour', ['change']) : {};
+        const total = (ids) => Object.values(variables.sum(rows, ids)).reduce((a, b) => a + b, 0);
+        const gIn = total(src.gridIn), gOut = total(src.gridOut), sol = total(src.solar), bOut = total(src.batOut), bIn = total(src.batIn);
+        const use = Math.max(0, gIn + sol + bOut - gOut - bIn);
+        const self = use > 0 ? Math.max(0, Math.min(100, Math.round((1 - gIn / use) * 100))) : null;
+        const cost = src.cost.length ? total(src.cost) : null;
+        const kwh = (v) => fx.nf(v, v < 10 ? 1 : 0);
+        const tile = (key, main, more) => `<div class="kpi tap${fx.isOpen(key)}"${fx.tapAttr(key)}>${main}${more}</div>`;
+        const pw = variables.power ? fx.num(variables.power, 0) : null;
+        const sp = variables.solar_power ? fx.num(variables.solar_power, 0) : null;
+        const pct = sp && variables.solar_max ? Math.max(0, Math.min(100, sp.raw / variables.solar_max * 100)) : null;
+        const tiles = [];
+        tiles.push(tile('en-use', pw
+          ? `<span class="label">${T('en_now', 'Using now')}</span><span class="num">${pw.raw >= 1000 ? fx.nf(pw.raw / 1000, 1) + '<small>kW</small>' : pw.v + '<small>W</small>'}</span>
+             <span class="kpi-sub">${T('en_today', 'Today')} <b>${kwh(use)} kWh</b></span>`
+          : `<span class="label">${T('en_used', 'Used today')}</span><span class="num">${kwh(use)}<small>kWh</small></span><span class="kpi-sub">&nbsp;</span>`,
+          fx.more(T('en_today', 'Today'), [[T('en_grid', 'From the grid'), `${kwh(gIn)} kWh`], [T('en_solar', 'Solar'), src.solar.length ? `${kwh(sol)} kWh` : null],
+            [T('en_battery', 'Battery'), src.batOut.length ? `${kwh(bOut)} kWh` : null], [T('en_returned', 'Returned'), src.gridOut.length ? `${kwh(gOut)} kWh` : null]])));
+        if (src.solar.length || sp) {
+          tiles.push(tile('en-sol', `<span class="label">${sp ? T('en_solar_now', 'Solar now') : T('en_solar_today', 'Solar today')}</span>
+            <span class="num">${sp ? (sp.raw >= 1000 ? fx.nf(sp.raw / 1000, 1) + '<small>kW</small>' : sp.v + '<small>W</small>') : kwh(sol) + '<small>kWh</small>'}</span>
+            <span class="kpi-sub">${sp ? `${T('en_today', 'Today')} <b>${kwh(sol)} kWh</b>` : '&nbsp;'}</span>${pct != null ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}`,
+            fx.more(T('en_solar', 'Solar'), [[T('en_today', 'Today'), `${kwh(sol)} kWh`], [T('en_self_used', 'Used yourself'), sol ? `${Math.round(Math.max(0, sol - gOut) / sol * 100)} %` : null],
+              [T('en_returned', 'Returned'), src.gridOut.length ? `${kwh(gOut)} kWh` : null]])));
+        }
+        tiles.push(tile('en-grid', `<span class="label">${T('en_grid_today', 'Grid today')}</span><span class="num">${kwh(gIn)}<small>kWh</small></span>
+          <span class="kpi-sub">${cost != null ? `<b>${fx.nf(cost, 2)}</b> ${fx.esc((hass.config && hass.config.currency) || '')}` : ''}${src.gridOut.length ? `${cost != null ? ' · ' : ''}${T('en_returned', 'Returned')} ${kwh(gOut)} kWh` : ''}&nbsp;</span>`,
+          fx.more(T('en_grid', 'From the grid'), [[T('en_today', 'Today'), `${kwh(gIn)} kWh`], [T('en_cost', 'Cost'), cost != null ? `${fx.nf(cost, 2)} ${fx.esc((hass.config && hass.config.currency) || '')}` : null],
+            [T('en_avg_price', 'Average price'), cost != null && gIn > 0 ? `${fx.nf(cost / gIn * 100, 1)} ct/kWh` : null]])));
+        tiles.push(tile('en-self', `<span class="label">${T('en_self', 'Self-sufficient')}</span><span class="num">${self != null ? self : '–'}<small>%</small></span>
+          <span class="kpi-sub">${T('en_self_sub', 'of today’s energy')}</span>${self != null ? `<div class="bar"><i style="width:${self}%"></i></div>` : ''}`,
+          fx.more(T('en_self', 'Self-sufficient'), [[T('en_used', 'Used today'), `${kwh(use)} kWh`], [T('en_own', 'Own energy'), `${kwh(Math.max(0, use - gIn))} kWh`]],
+            T('en_self_note', 'Share of today’s use that didn’t come from the grid'))));
+        return `<div class="kpis" style="--n:${tiles.length}">${tiles.join('')}</div>`;
+      ]]]
+
+# Consumption as bars: per hour today (period: hour) or per day (period: day, days: 30). The part covered
+# by solar or battery is yellow, the rest came from the grid. Tap a bar for its numbers.
+frame_energy_bars:
+  template: frame_energy_base
+  update_timer: 5min
+  variables:
+    title: ""
+    period: hour
+    days: 30
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx, src = variables.sources;
+        if (!fx) return '';
+        const T = (k, d) => (variables.text || {})[k] || d;
+        const day = variables.period === 'day';
+        const title = variables.title || (day ? T('en_per_day', 'Energy per day') : T('en_per_hour', 'Energy today'));
+        const now = new Date(), t0 = day ? fx.day0(now, -(variables.days - 1)) : fx.day0(now);
+        const all = src ? [].concat(src.gridIn, src.gridOut, src.solar, src.batIn, src.batOut) : [];
+        const rows = all.length ? fx.hist(all, Math.ceil((now - t0) / 3600000), 10, variables.period, ['change']) : {};
+        const g = variables.sum(rows, src ? src.gridIn : []), o = variables.sum(rows, src ? src.gridOut : []), s = variables.sum(rows, src ? src.solar : []);
+        const bo = variables.sum(rows, src ? src.batOut : []), bi = variables.sum(rows, src ? src.batIn : []);
+        const step = day ? 864e5 : 3600000, n = day ? variables.days : 24;
+        const slots = [...Array(n)].map((_, i) => {
+          const t = day ? fx.day0(t0, i).getTime() : t0.getTime() + i * step;
+          const gin = g[t] || 0, own = Math.max(0, (s[t] || 0) + (bo[t] || 0) - (o[t] || 0) - (bi[t] || 0));
+          return { t, gin, own, use: gin + own, future: t > now.getTime() };
+        });
+        const max = Math.max(0.1, ...slots.map((x) => x.use));
+        const sumUse = slots.reduce((a, b) => a + b.use, 0), sumOwn = slots.reduce((a, b) => a + b.own, 0);
+        const bars = slots.map((x) => (x.future ? '<i class="is-gap2"></i>'
+          : `<i class="en-bar" style="height:${Math.max(1, x.use / max * 100)}%"><b style="height:${x.use ? x.own / x.use * 100 : 0}%"></b></i>`)).join('');
+        const lbl = (t) => (day ? new Date(t).toLocaleDateString(fx.lang, { weekday: 'short', day: 'numeric', month: 'numeric' }) : `${fx.hourLabel(new Date(t))}`);
+        const tips = slots.filter((x) => !x.future).map((x) => ({ x: (slots.indexOf(x) + 0.5) / n * 100, i: slots.indexOf(x),
+          h: `${lbl(x.t)} · <b>${fx.nf(x.use, 2)} kWh</b><small>${T('en_grid', 'From the grid')} ${fx.nf(x.gin, 2)} · ${T('en_own', 'Own energy')} ${fx.nf(x.own, 2)}</small>` }));
+        const axis = slots.map((x, i) => ((day ? (n - 1 - i) % 7 === 0 : i % 6 === 0)
+          ? `<span style="left:${(i + 0.5) / n * 100}%">${day ? (i === n - 1 ? fx.t('today') : new Date(x.t).toLocaleDateString(fx.lang, { day: 'numeric', month: 'numeric' })) : fx.hourLabel(new Date(x.t))}</span>` : '')).join('');
+        return `<div class="ch"><div class="ch-head"><span class="label">${fx.esc(title)}</span><span class="ch-big num">${fx.nf(sumUse, sumUse < 10 ? 1 : 0)}<small>kWh</small></span></div>
+          <span class="ch-note"><i class="lg lg--own"></i>${T('en_own', 'Own energy')} <b>${sumUse ? Math.round(sumOwn / sumUse * 100) : 0} %</b> <i class="lg"></i>${T('en_grid', 'From the grid')}</span>
+          <div class="ch-plot"${fx.tipPlot(tips)}>${src ? `<div class="bars">${bars}</div><span class="ch-ymax">${fx.nf(max, 1)} kWh</span>` : ''}${fx.TIP}</div>
+          <div class="ch-axis">${axis}</div></div>`;
+      ]]]
+
+# Any sensor from its statistics. kind: area (e.g. power, period 5minute, hours 12) or bars (one bar per
+# period: day or month; stat change for meters). scale/unit convert (W -> kW: 0.001, kW).
+frame_chart:
+  template: frame
+  update_timer: 60s
+  variables:
+    title: ""
+    kind: area
+    hours: 12
+    days: 0
+    period: 5minute
+    stat: mean
+    scale: 1
+    unit: ""
+    decimals: 0
+    tick_hours: 3
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx || !entity) return '';
+        const V = variables, now = new Date(), id = entity.entity_id;
+        const hours = V.days ? Math.ceil((now - fx.day0(now, -(V.days - 1))) / 3600000) : V.hours;
+        const rows = (fx.hist([id], hours, 10, V.period, [V.stat])[id] || []).filter((r) => r[V.stat] != null)
+          .map((r) => ({ t: typeof r.start === 'number' ? r.start : Date.parse(r.start), v: (V.stat === 'change' ? Math.max(0, r[V.stat]) : r[V.stat]) * V.scale }));
+        const u = V.unit || (entity.attributes.unit_of_measurement || '');
+        const t1 = now.getTime(), t0 = t1 - hours * 3600000;
+        let plot = '', axis = '', head = '', tips = [], note = '';
+        if (V.kind === 'bars') {
+          const month = V.period === 'month';
+          const max = Math.max(1e-9, ...rows.map((r) => r.v));
+          const cur0 = month ? new Date(now.getFullYear(), now.getMonth(), 1).getTime() : fx.day0(now).getTime();
+          const lbl = (t) => new Date(t).toLocaleDateString(fx.lang, month ? { month: 'short' } : { day: 'numeric', month: 'numeric' });
+          plot = `<div class="bars">${rows.map((r) => `<i class="${r.t >= cur0 ? 'is-now' : ''}" style="height:${Math.max(1, r.v / max * 100)}%"></i>`).join('')}</div>
+            <span class="ch-ymax">${fx.nf(max, V.decimals)} ${fx.esc(u)}</span>`;
+          tips = rows.map((r, i) => ({ x: (i + 0.5) / rows.length * 100, i, h: `${lbl(r.t)} · <b>${fx.nf(r.v, V.decimals)} ${fx.esc(u)}</b>` }));
+          const every = month ? 3 : 7;
+          axis = rows.map((r, i) => ((rows.length - 1 - i) % every === 0 ? `<span style="left:${(i + 0.5) / rows.length * 100}%">${lbl(r.t)}</span>` : '')).join('');
+          const full = rows.filter((r) => r.t < cur0);
+          note = full.length ? `<span class="ch-note">Ø <b>${fx.nf(full.reduce((a, b) => a + b.v, 0) / full.length, V.decimals)} ${fx.esc(u)}</b></span>` : '';
+        } else {
+          const cur = fx.num(id, V.decimals);
+          if (cur) rows.push({ t: t1, v: cur.raw * V.scale });
+          const max = Math.max(1e-9, ...rows.map((r) => r.v));
+          const P = rows.map((r) => [Math.max(0, Math.min(100, (r.t - t0) / (t1 - t0) * 100)), 100 - r.v / max * 92]);
+          if (P.length > 1) {
+            const f = (n) => n.toFixed(2), d = 'M' + P.map((p) => `${f(p[0])},${f(p[1])}`).join(' L');
+            tips = rows.map((r, i) => ({ x: P[i][0], y: P[i][1], h: `${i === rows.length - 1 ? fx.t('now') : fx.time(new Date(r.t))} · <b>${fx.nf(r.v, V.decimals)} ${fx.esc(u)}</b>` }));
+            plot = `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line class="ch-grid" x1="0" x2="100" y1="54" y2="54"/>
+              <path class="ch-area" d="${d} L${f(P[P.length - 1][0])},100 L${f(P[0][0])},100 Z"/><path class="ch-line" d="${d}"/></svg>
+              <span class="ch-ymax">${fx.nf(max, V.decimals)} ${fx.esc(u)}</span>`;
+          }
+          const st = V.tick_hours * 3600000;
+          for (let t = Math.ceil(t0 / st) * st; t < t1; t += st) axis += `<span style="left:${(t - t0) / (t1 - t0) * 100}%">${fx.hourLabel(new Date(t))}</span>`;
+          head = cur ? `<span class="ch-big num">${fx.nf(cur.raw * V.scale, V.decimals)}<small>${fx.esc(u)}</small></span>` : '';
+        }
+        return `<div class="ch"><div class="ch-head"><span class="label">${fx.esc(V.title || fx.nameOf(id))}</span>${head}</div>${note}
+          <div class="ch-plot"${fx.tipPlot(plot ? tips : [])}>${plot ? plot + fx.TIP : '<span class="ch-note">…</span>'}</div><div class="ch-axis">${axis}</div></div>`;
+      ]]]
+
+# Electricity price per hour, today and tomorrow. entity: a price sensor with the prices in its attributes:
+# Nord Pool (raw_today/raw_tomorrow), EPEX Spot (data), Tibber-style lists (today/tomorrow with startsAt/total)
+# or any `prices: [{start, price}]`. Quarter hours are averaged to hours. scale/unit: how to show the
+# price (default: × 100 as cents). cheap: how many of the coming hours are marked green (cheapest) and red.
+frame_prices:
+  template: frame
+  update_timer: 5min
+  variables:
+    title: ""
+    scale: 100
+    unit: ct
+    decimals: 1
+    cheap: 3
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const T = (k, d) => (variables.text || {})[k] || d;
+        const a = (entity && entity.attributes) || {};
+        const t0 = fx.day0(new Date());
+        const at = (x, keys) => { for (const k of keys) if (x[k] != null) return x[k]; return null; };
+        const pts = [];
+        const add = (list, base) => (list || []).forEach((x, i) => {
+          if (typeof x === 'number') { if (base) pts.push({ t: base.getTime() + i * 3600000, v: x }); return; }
+          const t = Date.parse(at(x, ['start', 'startsAt', 'start_time', 'time', 'from']));
+          const v = Number(at(x, ['value', 'price', 'total', 'price_per_kwh', 'price_ct_per_kwh']));
+          if (!isNaN(t) && !isNaN(v)) pts.push({ t, v });
+        });
+        if (a.raw_today) { add(a.raw_today); add(a.raw_tomorrow); }
+        else if (a.data) add(a.data);
+        else if (a.prices) add(a.prices);
+        else { add(a.today, t0); add(a.tomorrow, fx.day0(t0, 1)); }
+        // to hours
+        const byH = {};
+        pts.forEach((p) => { const h = Math.floor(p.t / 3600000) * 3600000; (byH[h] = byH[h] || []).push(p.v); });
+        const hours = Object.keys(byH).map(Number).sort((x, y) => x - y).map((t) => ({ t, v: byH[t].reduce((s, v) => s + v, 0) / byH[t].length * variables.scale }))
+          .filter((h) => h.t >= t0.getTime());
+        const title = variables.title || T('pr_title', 'Electricity price');
+        if (!hours.length) return `<div class="ch"><div class="ch-head"><span class="label">${fx.esc(title)}</span></div><div class="ch-plot"><span class="ch-note">${T('pr_none', 'No prices yet')}</span></div></div>`;
+        const now = new Date(), curH = Math.floor(now.getTime() / 3600000) * 3600000;
+        const future = hours.filter((h) => h.t >= curH), byPrice = future.slice().sort((x, y) => x.v - y.v);
+        const cheap = new Set(byPrice.slice(0, variables.cheap).map((h) => h.t)), dear = new Set(byPrice.slice(-variables.cheap).map((h) => h.t));
+        const max = Math.max(...hours.map((h) => h.v)), n = hours.length, tomorrow = fx.day0(now, 1).getTime();
+        const u = fx.esc(variables.unit), f = (v) => fx.nf(v, variables.decimals);
+        const tips = hours.map((h, i) => ({ x: (i + 0.5) / n * 100, i,
+          h: `${fx.dayLabel(new Date(h.t), now)} ${fx.hourLabel(new Date(h.t))} · <b>${f(h.v)} ${u}</b>${cheap.has(h.t) ? `<small>${T('pr_cheap', 'cheap')}</small>` : dear.has(h.t) ? `<small>${T('pr_dear', 'expensive')}</small>` : ''}` }));
+        const bars = hours.map((h) => `<i class="${h.t === curH ? 'is-now' : h.t < curH ? 'is-past' : cheap.has(h.t) ? 'is-cheap' : dear.has(h.t) ? 'is-dear' : ''}" style="height:${Math.max(2, h.v / max * 100)}%"></i>`).join('');
+        const axis = hours.map((h, i) => (new Date(h.t).getHours() % 6 === 0 ? `<span style="left:${(i + 0.5) / n * 100}%">${h.t === tomorrow ? fx.t('tomorrow') : fx.hourLabel(new Date(h.t))}</span>` : '')).join('');
+        const cur = hours.find((h) => h.t === curH), best = byPrice[0];
+        return `<div class="ch"><div class="ch-head"><span class="label">${fx.esc(title)}</span>${cur ? `<span class="ch-big num">${f(cur.v)}<small>${u}</small></span>` : ''}</div>
+          ${best ? `<span class="ch-note">${T('pr_best', 'Cheapest')}: <b>${fx.dayLabel(new Date(best.t), now)} ${fx.hourLabel(new Date(best.t))}</b> · ${f(best.v)} ${u}</span>` : ''}
+          <div class="ch-plot"${fx.tipPlot(tips)}><div class="bars">${bars}</div><span class="ch-ymax">${fx.nf(max, 0)} ${u}</span>${fx.TIP}</div>
+          <div class="ch-axis">${axis}</div></div>`;
+      ]]]

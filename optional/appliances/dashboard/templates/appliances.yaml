@@ -1,0 +1,92 @@
+# Appliances (optional/appliances): washing machine, dryer, dishwasher, robot vacuum ... in one block, only
+# while one of them runs or has finished. Running: ice blue with time left or a progress bar; finished:
+# indigo with a "Done" button. A power sensor draws the run's power curve behind its row. Tap a row for
+# Home Assistant's dialog.
+#
+#   appliances: [{entity, name, icon, idle?, program?, progress?, finish?, remaining?, power?, door?, done_hours?, done_text?, no_done?}]
+#     entity:    the appliance's state (a status sensor, or a binary_sensor "running", or a smart plug's switch)
+#     idle:      states that mean "off" (default below)
+#     program:   entity with the current program, shown while running
+#     progress:  % done; finish: timestamp when it ends; remaining: minutes or "H:MM" left
+#     power:     power sensor (W) for the curve
+#     door:      a door sensor: opening the door clears "finished"
+#     done_hours: how long "finished" stays (default 3, at most 12); no_done: true = never show "finished" (vacuums)
+# "Done" is remembered on this device.
+frame_appliances:
+  template: frame
+  update_timer: 60s
+  hidden: "[[[ return !variables.fx || !variables.active.length; ]]]"
+  variables:
+    appliances: []
+    idle_states: ["-", "unknown", "unavailable", "inactive", "ready", "off", "idle", "standby", "docked", "finished", "Finished", "complete", "end"]
+    # [{a, done, from, to, key}] – also used by `hidden`
+    active: |
+      [[[
+        const fx = variables.fx, t = Date.now(), apps = variables.appliances || [];
+        if (!fx) return [];
+        const ch = apps.length ? fx.changes(apps.map((a) => a.entity), 12, 5) : {};
+        let done = {};
+        try { done = JSON.parse(localStorage.getItem('frame-done') || '{}'); } catch (e) { /* private mode */ }
+        const out = [];
+        apps.forEach((a) => {
+          const s = states[a.entity];
+          if (!s || ['unknown', 'unavailable'].includes(s.state)) return;
+          const idle = a.idle || variables.idle_states;
+          if (!idle.includes(s.state)) { out.push({ a, done: false, from: Date.parse(s.last_changed) }); return; }
+          const last = fx.runs(ch[a.entity], idle).filter((r) => r.to).pop();
+          if (!last || a.no_done) return;
+          const key = `${a.entity}:${last.to}`;
+          const doorOpened = a.door && states[a.door] && Date.parse(states[a.door].last_changed) > last.to;
+          if (t - last.to > Math.min(12, a.done_hours || 3) * 3600000 || done[key] || doorOpened) return;
+          out.push({ a, done: true, from: last.from, to: last.to, key });
+        });
+        return out.sort((x, y) => y.done - x.done);
+      ]]]
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx, t = Date.now(), list = variables.active;
+        if (!fx || !list.length) return '';
+        const T = (k, d) => (variables.text || {})[k] || d;
+        window.__frameAppDone = window.__frameAppDone || ((el, ev) => {
+          ev.stopPropagation();
+          try {
+            const m = JSON.parse(localStorage.getItem('frame-done') || '{}');
+            m[el.dataset.key] = Date.now();
+            Object.keys(m).forEach((k) => { if (Date.now() - m[k] > 7 * 864e5) delete m[k]; });
+            localStorage.setItem('frame-done', JSON.stringify(m));
+          } catch (e) { /* private mode */ }
+          const host = el.getRootNode().host;
+          if (host) host.requestUpdate('_config');
+        });
+        const curve = (a, from, live) => {
+          if (!a.power) return '';
+          const sh = Math.min(4, Math.max(1, Math.ceil((t - from) / 3600000) || 1));
+          const pNow = live ? fx.num(a.power, 0) : null;
+          return fx.spark(fx.hist([a.power], sh, 5, '5minute')[a.power], sh, { now: pNow ? pNow.raw : null, minSpan: 50, unit: pNow ? pNow.unit || 'W' : 'W' });
+        };
+        const rows = list.map((x) => {
+          const a = x.a, prog = a.program && fx.ok(a.program) ? fx.fmt(a.program) : '';
+          if (x.done) {
+            return `<div class="ger-row" data-id="${a.entity}" onpointerup="__frameInfo(this)">${curve(a, x.from, false)}
+              <span class="blk-ico is-done"><ha-icon icon="mdi:check"></ha-icon></span>
+              <span class="blk-main"><b>${fx.esc(a.name)} ${T('app_finished', 'finished')}</b><span>${fx.esc(a.done_text || T('app_empty', 'Ready to empty'))} · ${fx.dur(t - x.to)}</span></span>
+              <button class="ok-btn" data-key="${fx.esc(x.key)}" onpointerup="__frameAppDone(this,event)">${T('app_done', 'Done')}</button></div>`;
+          }
+          const pct = a.progress && fx.ok(a.progress) ? Number(states[a.progress].state) : null;
+          let fin = a.finish && fx.ok(a.finish) ? new Date(states[a.finish].state) : null;
+          if ((!fin || isNaN(fin)) && a.remaining && fx.ok(a.remaining)) {
+            const r = states[a.remaining].state, m = /^(\d+):(\d{2})/.exec(r), mins = m ? Number(m[1]) * 60 + Number(m[2]) : Number(r);
+            fin = !isNaN(mins) && mins > 0 ? new Date(t + mins * 60000) : null;
+          }
+          const pw = a.power ? fx.num(a.power, 0) : null;
+          const sub = [fx.fmt(a.entity), prog, pw ? `${pw.v} ${pw.unit || 'W'}` : ''].filter(Boolean).join(' · ');
+          const side = fin && !isNaN(fin) ? `${T('app_until', 'until')} ${fx.time(fin)}` : pct != null && !isNaN(pct) ? `${Math.round(pct)}%` : fx.dur(t - x.from);
+          return `<div class="ger-row is-run" data-id="${a.entity}" onpointerup="__frameInfo(this)">${curve(a, x.from, true)}
+            <span class="blk-ico is-on"><ha-icon icon="${a.icon || 'mdi:washing-machine'}"></ha-icon></span>
+            <span class="blk-main"><b>${fx.esc(a.name)}</b><span>${fx.esc(sub)}</span>
+              ${pct != null && !isNaN(pct) ? `<div class="bar"><i style="width:${Math.max(0, Math.min(100, pct))}%"></i></div>` : ''}</span>
+            <span class="blk-side">${side}</span></div>`;
+        }).join('');
+        return `<div class="blk ger ${list.some((x) => x.done) ? 'blk--due' : 'blk--run'}">${rows}</div>`;
+      ]]]

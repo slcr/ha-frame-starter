@@ -15,9 +15,8 @@ kiosk_mode:
   hide_header: true
   hide_sidebar: true
 
-button_card_templates: !include templates.yaml
+# Every file in templates/ and views/ is loaded. Optional modules (optional/* in the repo) add files there.
+button_card_templates: !include_dir_merge_named templates
 
-views:
-  - !include views/home.yaml
-  - !include views/house.yaml
-  - !include views/setup.yaml
+# Views in file name order (10-home, 20-house, ...). The rail lists them with their title and icon.
+views: !include_dir_merge_list views
