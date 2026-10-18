@@ -1,5 +1,7 @@
 # Frame — a wall dashboard for Home Assistant
 
+> **From the Reddit post:** this repo came out of [Wes Bos inspired me to go full Home Assistant](https://www.reddit.com/r/homeassistant/comments/1x89liy/wes_bos_inspired_me_to_go_full_home_assistant/) on r/homeassistant. The full version of Frame runs on my own wall every day, with a lot more pages and content than you'll find here. This is "just" the starter: the core layout, the shared runtime and a set of optional modules, ready for you to build your own on top of.
+
 A calm, paper-and-ink dashboard for a tablet on the wall. A big clock, the weather and what to wear, who's home, the next event with a countdown and your week, plus lights, blinds, locks, windows and room climate, all readable from across the room.
 
 It's built from [button-card](https://github.com/custom-cards/button-card) templates and [layout-card](https://github.com/thomasloven/lovelace-layout-card), with a small shared runtime. A **Setup page** checks your install, finds the example entities you still need to replace and writes the YAML for you from your own Home Assistant.
