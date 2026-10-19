@@ -467,6 +467,11 @@ const patch = (BC) => {
   P.connectedCallback = function () { cc.call(this); adopt(this); };
   const sc = P.setConfig;
   P.setConfig = function (c) { sc.call(this, c); adopt(this); };
+  // Lifecycle callbacks are read once by customElements.define(), so the connectedCallback wrapper does
+  // nothing when button-card was defined before this file ran. willUpdate is an ordinary Lit method,
+  // runs before every render and after the shadow root exists, so it catches every card in both cases.
+  const wu = P.willUpdate;
+  P.willUpdate = function (ch) { if (wu) wu.call(this, ch); adopt(this); };
   // button-card ignores state changes on cards with update_timer until the next tick.
   // Redraw those cards right away when one of their entities changes.
   if (typeof P._hasAnEntityChanged === 'function') {
