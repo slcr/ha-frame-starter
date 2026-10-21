@@ -35,6 +35,7 @@ frame_bins:
       - match: garden
         label: Garden waste
         color: "#00A36C"
+        img: /local/frame/bins/green.webp
       - match: hazard
         label: Hazardous waste
         color: "#8B5A2B"
