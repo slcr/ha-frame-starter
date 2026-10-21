@@ -1,11 +1,12 @@
 # Core modules. Every option is in docs/modules.md.
 #
 #   frame_rail      navigation rail (left on tablets, top bar on phones)
-#   frame_clock     big clock with date
-#   frame_weather   current weather, hourly strip, what to wear
+#   frame_clock     big clock with date, and the children dressed for the weather
+#   frame_weather   current weather, hourly strip, what to wear; tap for the weather window
 #   frame_people    who is home
 #   frame_next      next calendar event with countdown
 #   frame_agenda    next 7 days
+#   frame_countdown next birthday or holiday, with pictures
 #   frame_heading   section heading
 #   frame_scene     scene/script button with state ("2 of 3 on", "last run ...")
 #   frame_light     light tile: tap toggles, drag dims, hold for details; one light, a group or a whole area
@@ -19,7 +20,8 @@
 
 # Rail on the left (tablet) or a sticky bar at the top (phone, under 768 px). It lists the views of this
 # dashboard with their `title` and `icon` (a view with `visible: false` is left out); the current one is dark.
-# pages: [{path, label, icon}] to list your own instead. Tap the clock for HA settings.
+# pages: [{path, label, icon}] to list your own instead. Tap the clock for a menu with the pages from
+# `menu_pages` (household settings: pages you rarely need, like Energy) and Home Assistant's settings.
 frame_rail:
   template: frame
   update_timer: 30s
@@ -45,23 +47,36 @@ frame_rail:
       [[[
         const fx = variables.fx;
         if (!fx) return '';
-        const pages = variables.pages.length ? variables.pages : fx.views();
+        const all = variables.pages.length ? variables.pages : fx.views();
+        const inMenu = (p) => (variables.menu_pages || []).includes(p.path);
+        const pages = all.filter((p) => !inMenu(p)), menu = all.filter(inMenu);
         const cur = variables.active || location.pathname.split('/')[2] || (pages[0] || {}).path;
         const d = new Date(), c = fx.clock(d);
         const items = pages.map((p) => `<button class="nav${p.path === cur ? ' is-on' : ''}" onpointerup="__frameGo('${fx.esc(p.path)}')">
           <ha-icon icon="${p.icon}"></ha-icon><span>${fx.esc(p.label)}</span></button>`).join('');
-        // admins land in Settings, everyone else in their profile
-        const target = user && user.is_admin ? '/config/dashboard' : '/profile';
-        return `<nav class="rail">${items}<span class="rail-gap"></span>
-          <div class="rail-clock" role="button" onpointerup="location.href = '${target}'"><b class="num">${c.hm}</b>
-          <span>${fx.weekday(d, 'short')} ${d.getDate()}</span></div></nav>`;
+        // the clock menu (www/frame/frame.js): admins get Settings, everyone else their profile
+        const admin = user && user.is_admin;
+        window.__frameMenuData = { items: menu, active: cur, aria: fx.t('more_pages'),
+          settings: { href: admin ? '/config/dashboard' : '/profile', label: fx.t(admin ? 'settings' : 'profile'), icon: admin ? 'mdi:cog-outline' : 'mdi:account-circle-outline' } };
+        // pointerup for touch; click only for keyboards and assistive tech (button-card swallows touch clicks)
+        // Ask (www/frame/assist.js): Assist with your pipeline, when `ask:` is set
+        const ask = variables.ask ? `<button class="nav" onpointerup="window.__frameAsk && __frameAsk(this)">
+          <ha-icon icon="mdi:microphone-outline"></ha-icon><span>${fx.esc(fx.t('ask'))}</span></button>` : '';
+        return `<nav class="rail">${items}<span class="rail-gap"></span>${ask}
+          <button type="button" class="rail-clock${menu.some((p) => p.path === cur) ? ' is-active' : ''}" aria-label="${fx.esc(fx.t('more_pages'))}" aria-haspopup="menu" aria-expanded="false"
+            onpointerup="__frameMenu(event,this)" onclick="if (event.detail === 0) __frameMenu(event,this); else event.stopPropagation()"><b class="num">${c.hm}</b>
+          <span>${fx.weekday(d, 'short')} ${d.getDate()}</span></button></nav>`;
       ]]]
 
 # ----------------------------------------------------------------------- today
 
+# Big clock and date. Next to it two children dressed for today's weather (the outfit from frame_weather),
+# standing on the line; figures: false hides them. With optional/timer, tapping the clock opens the kitchen timer.
 frame_clock:
   template: frame
   update_timer: 10s
+  variables:
+    figures: true
   styles:
     custom_fields:
       body:
@@ -72,23 +87,25 @@ frame_clock:
         const fx = variables.fx;
         if (!fx) return '';
         const d = new Date(), c = fx.clock(d);
-        return `<div class="clk">
-          <div class="clk-time num">${c.hm}${c.ampm ? `<small>${c.ampm}</small>` : ''}</div>
-          <div class="clk-date"><b>${fx.weekday(d)}</b>${fx.dateLong(d)}</div>
+        const img = variables.figures ? fx.figImg(fx.outfit(variables.weather).figs) : '';
+        const tap = variables.timer ? ' class="clk tap-zone" onpointerup="window.__frameTimer && __frameTimer()"' : ' class="clk"';
+        return `<div${tap}>
+          <div class="clk-main">
+            <div class="clk-time num">${c.hm}${c.ampm ? `<small>${c.ampm}</small>` : ''}</div>
+            <div class="clk-date"><b>${fx.weekday(d)}</b>${fx.dateLong(d)}</div>
+          </div>
+          ${img ? `<div class="clk-fig">${img}</div>` : ''}
         </div>`;
       ]]]
 
 # Current weather, today's high/low, the next 12 hours in 2-hour steps (temperature line and rain
-# bars behind) and a one-line hint what to wear. Needs a weather entity with an hourly forecast
-# (Met.no, OpenWeatherMap, Pirate Weather, ...). entity: defaults to `weather` from the base.
+# bars behind) and a one-line hint what to wear. Tap it for the weather window (www/frame/weather.js):
+# the parts of the day, 24 hours, the next days and today's numbers over a matching sky.
+# Needs a weather entity with an hourly forecast (Met.no, OpenWeatherMap, Pirate Weather, ...); the window
+# also uses the daily forecast when there is one. entity: defaults to `weather` from the base.
 frame_weather:
   template: frame
   update_timer: 5min
-  variables:
-    # temperature thresholds for the clothing hint (highest temperature in the next 12 hours)
-    coat_below: 8
-    jacket_below: 15
-    sweater_below: 21
   custom_fields:
     body: |
       [[[
@@ -97,53 +114,30 @@ frame_weather:
         const id = entity ? entity.entity_id : variables.weather;
         const cur = states[id];
         if (!cur) return `<div class="wx"><div class="free"><i>${fx.t('weather_na')}</i> · ${fx.esc(id)}</div></div>`;
-        const ICON = { 'clear-night': 'mdi:weather-night', cloudy: 'mdi:weather-cloudy', exceptional: 'mdi:alert-circle-outline',
-          fog: 'mdi:weather-fog', hail: 'mdi:weather-hail', lightning: 'mdi:weather-lightning', 'lightning-rainy': 'mdi:weather-lightning-rainy',
-          partlycloudy: 'mdi:weather-partly-cloudy', pouring: 'mdi:weather-pouring', rainy: 'mdi:weather-rainy', snowy: 'mdi:weather-snowy',
-          'snowy-rainy': 'mdi:weather-snowy-rainy', sunny: 'mdi:weather-sunny', windy: 'mdi:weather-windy', 'windy-variant': 'mdi:weather-windy-variant' };
-        // worse weather wins when two hours share a slot
-        const RANK = ['clear-night', 'sunny', 'partlycloudy', 'cloudy', 'fog', 'windy', 'windy-variant', 'rainy', 'snowy-rainy', 'snowy',
-          'hail', 'pouring', 'lightning', 'lightning-rainy', 'exceptional'];
         const night = states['sun.sun'] && states['sun.sun'].state === 'below_horizon';
-        const icon = (c, isNight) => (c === 'partlycloudy' && isNight ? 'mdi:weather-night-partly-cloudy' : c === 'sunny' && isNight ? 'mdi:weather-night' : ICON[c] || 'mdi:weather-cloudy');
         const r = (v) => (v == null ? null : Math.round(v));
-        const now = Date.now();
-        const hours = fx.forecast(id, 'hourly').map((x) => ({ t: new Date(x.datetime), temp: x.temperature, cond: x.condition,
-          pop: x.precipitation_probability || 0, mm: x.precipitation || 0, feel: x.apparent_temperature, wind: x.wind_speed }))
-          .filter((x) => x.t.getTime() > now - 3600000);
+        const hours = fx.wxHours(id);
         const daily = fx.forecast(id, 'daily');
-        const wet = (x) => /rain|pour|snow|hail|lightning/.test(x.cond || '') || x.pop >= 50 || x.mm >= 0.3;
 
         const temp = r(cur.attributes.temperature);
         const next24 = hours.slice(0, 24);
         const hi = daily.length ? r(daily[0].temperature) : next24.length ? r(Math.max(...next24.map((x) => x.temp))) : null;
         const lo = daily.length && daily[0].templow != null ? r(daily[0].templow) : next24.length ? r(Math.min(...next24.map((x) => x.temp))) : null;
         const feel = r(cur.attributes.apparent_temperature != null ? cur.attributes.apparent_temperature : hours.length ? hours[0].feel : null);
-
-        // what to wear: highest temperature of the next 12 hours, rain on top
-        const next12 = hours.slice(0, 12);
-        let say = '', extra = '';
-        if (next12.length) {
-          const max = Math.max(...next12.map((x) => x.temp));
-          say = fx.t(max < variables.coat_below ? 'wear_coat' : max < variables.jacket_below ? 'wear_jacket' : max < variables.sweater_below ? 'wear_sweater' : 'wear_tshirt');
-          const firstWet = next12.find(wet);
-          if (firstWet && firstWet === next12[0]) {
-            const dry = next12.find((x) => !wet(x));
-            extra = dry ? fx.t('rain_now', fx.hourLabel(dry.t)) : fx.t('wear_umbrella');
-          } else if (firstWet) extra = fx.t('rain_from', fx.hourLabel(firstWet.t));
-        }
+        // what to wear (fx.outfit in www/frame/frame.js): feels-like temperature of the next 12 hours, rain, gusts, sun
+        const { say, extra } = fx.outfit(id);
 
         // six slots of two hours; icon and rain over both hours so a shower between slots does not vanish
         const slots = [], pts = [];
         for (let i = 1; i + 1 < hours.length && slots.length < 6; i += 2) {
           const a = hours[i], b = hours[i + 1];
-          const cond = RANK.indexOf(b.cond) > RANK.indexOf(a.cond) ? b.cond : a.cond;
-          const pop = [a, b].filter(wet).reduce((m, x) => Math.max(m, x.pop || 0), 0);
-          const isWet = wet(a) || wet(b);
+          const cond = fx.wxRank(b.cond) > fx.wxRank(a.cond) ? b.cond : a.cond;
+          const pop = [a, b].filter(fx.wet).reduce((m, x) => Math.max(m, x.pop || 0), 0);
+          const isWet = fx.wet(a) || fx.wet(b);
           const isNight = b.t.getHours() >= 21 || b.t.getHours() < 6;
           pts.push({ temp: b.temp, pop: isWet ? pop : 0 });
           slots.push(`<div class="wx-d${isWet ? ' is-wet' : ''}"><span>${fx.hourLabel(b.t)}</span>
-            <ha-icon icon="${icon(cond, isNight)}"></ha-icon><b>${r(b.temp)}°</b>
+            <ha-icon icon="${fx.wxIcon(cond, isNight)}"></ha-icon><b>${r(b.temp)}°</b>
             <small>${isWet && pop ? `${pop}%` : '&nbsp;'}</small></div>`);
         }
         // temperature line through the slot centres, rain probability as bars behind
@@ -164,13 +158,13 @@ frame_weather:
           graph = `<svg class="wx-graph" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
             <path class="wx-tarea" d="${d} L${W},${H} L0,${H} Z"/><g class="wx-rain">${bars}</g><path class="wx-tline" d="${d}"/></svg>`;
         }
-        return `<div class="wx">
+        return `<div class="wx tap-zone" onpointerup="__frameWxOpen(this,'${fx.esc(id)}')">
           <div class="wx-top">
             <span class="wx-temp num">${temp != null ? temp + '°' : '–'}</span>
-            <span class="wx-meta"><b><ha-icon icon="${icon(cur.state, night)}"></ha-icon>${fx.esc(fx.fmt(id))}</b>
+            <span class="wx-meta"><b><ha-icon icon="${fx.wxIcon(cur.state, night)}"></ha-icon>${fx.esc(fx.fmt(id))}</b>
               ${hi != null ? `<span>${fx.t('high')} ${hi}°${lo != null ? ` · ${fx.t('low')} ${lo}°` : ''}</span>` : ''}
               ${feel != null ? `<span>${fx.t('feels')} ${feel}°</span>` : ''}</span>
-            <div class="wx-say">${say ? `<i>${say}</i>` : ''}${extra ? `<span>${extra}</span>` : ''}</div>
+            <div class="wx-say">${say ? `<i>${say}</i>` : ''}${extra.length ? `<span>${extra.join(' ')}</span>` : ''}</div>
           </div>
           ${slots.length ? `<div class="wx-days">${graph}${slots.join('')}</div>` : `<div class="label">${fx.t('forecast_na')}</div>`}
         </div>`;
@@ -268,6 +262,102 @@ frame_agenda:
         return `<div class="wk">${blocks.join('')}<div class="wk-fade"></div></div>`;
       ]]]
 
+# Countdown to the next birthday or holiday, with painted pictures (www/frame/countdown). Tap it for the next
+# ones. Birthdays get the colour of their person when the name matches someone in `people`.
+frame_countdown:
+  template: frame
+  update_timer: 30min
+  variables:
+    # rows shown, and how many more a tap reveals
+    count: 1
+    more: 6
+    # {name, date: 'YYYY-MM-DD' (shows the age) or 'MM-DD'}
+    birthdays: []
+    # built in: christmas (25 Dec), christmas_eve (24 Dec), easter (Easter Sunday), new_year
+    holidays: [christmas, easter]
+    # a calendar with school holidays (all-day events): the next one, while there are none right now
+    holiday_calendar: ""
+    # anything else: {name, date: 'YYYY-MM-DD' (once) or 'MM-DD' (every year), icon?, sub?}
+    dates: []
+    # pictures by icon; anything else shows its icon in a square
+    pics:
+      mdi:cake-variant-outline: countdown/cake.webp
+      mdi:pine-tree: countdown/tree.webp
+      mdi:egg-easter: countdown/eggs.webp
+      mdi:school-outline: countdown/holidays.webp
+  custom_fields:
+    body: |
+      [[[
+        const fx = variables.fx;
+        if (!fx) return '';
+        const t0 = fx.day0(new Date()), t = fx.t;
+        const day = (d) => `${fx.weekday(d, 'short')}, ${fx.dateLong(d)}`;
+        const ymd = (s) => { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d); };
+        // the next date from today (this year or next)
+        const next = (fn) => { const a = fn(t0.getFullYear()); return a >= t0 ? a : fn(t0.getFullYear() + 1); };
+        const yearly = (s) => { const p = String(s).split('-').map(Number), [m, d] = p.slice(-2); return { y: p.length === 3 ? p[0] : null, at: next((y) => new Date(y, m - 1, d)) }; };
+        // Easter Sunday (Gauss, Gregorian)
+        const easter = (y) => {
+          const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
+          const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+          const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+          return new Date(y, Math.floor((h + l - 7 * m + 114) / 31) - 1, ((h + l - 7 * m + 114) % 31) + 1);
+        };
+        const HOL = {
+          christmas: () => ({ title: t('christmas'), d: next((y) => new Date(y, 11, 25)), icon: 'mdi:pine-tree' }),
+          christmas_eve: () => ({ title: t('christmas_eve'), d: next((y) => new Date(y, 11, 24)), icon: 'mdi:pine-tree' }),
+          easter: () => ({ title: t('easter'), d: next(easter), icon: 'mdi:egg-easter' }),
+          new_year: () => ({ title: t('new_year'), d: next((y) => new Date(y, 0, 1)), icon: 'mdi:party-popper' }),
+        };
+        const items = (variables.holidays || []).filter((k) => HOL[k]).map((k) => HOL[k]());
+        items.forEach((it) => { it.sub = day(it.d); });
+        (variables.birthdays || []).forEach((b) => {
+          const { y, at } = yearly(b.date);
+          const who = fx.people.find((p) => p.name === b.name);
+          items.push({ title: b.name, sub: `${y ? t('turns', at.getFullYear() - y) : t('birthday')} · ${day(at)}`, d: at,
+            icon: 'mdi:cake-variant-outline', c: who && who.color, ink: who && who.ink });
+        });
+        (variables.dates || []).forEach((x) => {
+          const once = String(x.date).split('-').length === 3 && !x.yearly;
+          const d = once ? ymd(x.date) : yearly(x.date).at;
+          if (d >= t0) items.push({ title: x.name, sub: x.sub || day(d), d, icon: x.icon || 'mdi:calendar-star' });
+        });
+        // school holidays: only while there are none right now
+        if (variables.holiday_calendar) {
+          const evs = fx.events(t0, fx.day0(t0, 370), [{ entity: variables.holiday_calendar }]) || [];
+          if (!evs.some((e) => e.from <= t0 && e.to > t0)) {
+            const e = evs.find((x) => x.from > t0);
+            if (e) {
+              const len = Math.round((fx.day0(new Date(e.to - (e.all_day ? 1 : 0))) - fx.day0(e.from)) / 864e5) + 1;
+              items.push({ title: e.title, sub: `${t('from_day', day(e.from))} · ${t(len === 1 ? 'day_off' : 'days_off', len)}`, d: fx.day0(e.from), icon: 'mdi:school-outline' });
+            }
+          }
+        }
+        if (!items.length) return '';
+        items.sort((a, b) => a.d - b.d);
+        const n = (it) => Math.round((it.d - t0) / 864e5);
+        const big = (it) => {
+          const k = n(it);
+          if (k <= 1) return `<span class="serif">${fx.esc(t(k ? 'tomorrow' : 'today'))}</span>`;
+          return `<span class="num">${k}</span><span class="label">${fx.esc(t('days'))}</span>`;
+        };
+        // the picture big on the left, cut off by the next row or the card edge; the person's colour as a dot
+        const pics = variables.pics || {};
+        const row = (it, first) => {
+          const pic = pics[it.icon];
+          return `<div class="cd-it${first ? ' is-next' : ''}${pic ? ' has-pic' : ''}"${it.c ? ` style="--c:${it.c};--c-ink:${it.ink || '#FFFFFF'}"` : ''}>
+            ${pic ? `<span class="cd-pic"><img src="${fx.esc(fx.asset(pic))}" alt=""></span>` : `<span class="cd-ico"><ha-icon icon="${it.icon}"></ha-icon></span>`}
+            <span class="cd-main"><b>${pic && it.c ? '<i class="cd-dot"></i>' : ''}${fx.esc(it.title)}</b><span>${fx.esc(it.sub)}</span></span>
+            <span class="cd-n">${big(it)}</span></div>`;
+        };
+        const shown = items.slice(0, variables.count), rest = items.slice(variables.count, variables.count + variables.more);
+        const fold = rest.length ? ` fold-tap${fx.isFolded('cd')}" data-fold="cd" onpointerup="__frameFold(this)"` : '"';
+        return `<div class="blk cd${fold}>
+          <div class="fold-head"><span class="label">${fx.esc(t('countdown'))}</span>${rest.length ? '<ha-icon class="fold-chev" icon="mdi:chevron-down"></ha-icon>' : ''}</div>
+          <div class="cd-list">${shown.map((it, i) => row(it, i === 0)).join('')}</div>
+          ${rest.length ? `<div class="cd-list fold-body">${rest.map((it) => row(it, false)).join('')}</div>` : ''}</div>`;
+      ]]]
+
 # ----------------------------------------------------------------------- building blocks
 
 frame_heading:
@@ -333,8 +423,10 @@ frame_scene:
 
 # Light tile in the colours of the lights that are on.
 #   Tap: on/off. Drag sideways: dim (on lights that can dim). Hold: Home Assistant's light dialog.
-#   entity: a light or a light group. Or area: an area id; then the tile controls all lights in that
-#   area (lights without an own area count by their device's area; groups, hidden and config entities don't).
+#   entity: a light or a light group. Or area: an area id; then the tile stands for all lights in that
+#   area (lights without an own area count by their device's area; groups, hidden and config entities don't):
+#   dragging dims them all, a tap opens the room window (www/frame/room.js) with every lamp, its colours and,
+#   with optional/scenes, scene pictures.
 frame_light:
   template: frame
   variables:
@@ -348,7 +440,10 @@ frame_light:
         if (!fx) return '';
         window.__frameLight = window.__frameLight || ((ev, el) => {
           if (ev.button > 0) return;
-          const ids = el.dataset.entity.split(','), dim = el.classList.contains('can-dim');
+          // data-room: a room tile -> tap or hold opens the room window (www/frame/room.js), only dragging dims the room
+          const ids = el.dataset.entity.split(','), dim = el.classList.contains('can-dim'), room = !!el.dataset.room;
+          // a lamp's round icon in the room window (data-pick): tap opens its colours there
+          const pick = !room && ev.target.closest && ev.target.closest('[data-pick]');
           const x0 = ev.clientX, y0 = ev.clientY, label = el.querySelector('.lt-sub'), text0 = label.textContent;
           const pct0 = el.style.getPropertyValue('--pct');
           let mode = null, pct = null;
@@ -356,7 +451,8 @@ frame_light:
           const hold = setTimeout(() => {
             if (mode) return;
             mode = 'hold';
-            el.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId: ids[0] }, bubbles: true, composed: true }));
+            if (room) window.__frameRoom(el);
+            else el.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId: ids[0] }, bubbles: true, composed: true }));
           }, 550);
           const move = (m) => {
             const dx = m.clientX - x0, dy = m.clientY - y0;
@@ -380,6 +476,11 @@ frame_light:
             if (u.type === 'pointercancel') { el.style.setProperty('--pct', pct0); label.textContent = text0; return; }
             if (mode === 'dim' && pct != null) {
               (pct < 2 ? call('turn_off') : call('turn_on', { brightness_pct: pct })).catch(() => { label.textContent = text0; });
+            } else if (!mode && room) {
+              window.__frameRoom(el);
+            } else if (!mode && pick) {
+              const wrap = el.closest('.ced-wrap');
+              if (wrap && wrap.__pick) wrap.__pick(ids[0]);
             } else if (!mode) {
               // explicit on/off from what the tile shows (toggle would follow the group state)
               const wasOn = el.classList.contains('is-on');
@@ -404,7 +505,7 @@ frame_light:
         const root = this.shadowRoot, g = fx.glowStyle(members.map((id) => states[id]), root && root.querySelector('.lt'));
         if (g.attr) { Promise.resolve().then(() => window.__frameGlowFlush(root)); requestAnimationFrame(() => window.__frameGlowFlush(root)); }
         return `<div class="lt${on ? ' is-on' : ''}${na ? ' is-na' : ''}${dim ? ' can-dim' : ''}${pct <= 0 || pct >= 100 ? ' is-edge' : ''}" style="--pct:${pct}%;${g.style}"${g.attr}
-          ${na ? '' : `data-entity="${ids.join(',')}" data-off="${fx.t('off')}" onpointerdown="__frameLight(event,this)"`}>
+          ${na ? '' : `data-entity="${ids.join(',')}" data-off="${fx.t('off')}"${variables.area ? ` data-room="${fx.esc(variables.name)}" data-area="${fx.esc(variables.area)}" data-area-name="${fx.esc(((hass.areas || {})[variables.area] || {}).name || '')}"` : ''} onpointerdown="__frameLight(event,this)"`}>
           <i class="lt-fill"></i><span class="lt-ico"><ha-icon icon="${variables.icon}"></ha-icon></span><b>${fx.esc(variables.name)}</b><span class="lt-sub">${sub}</span></div>`;
       ]]]
 

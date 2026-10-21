@@ -1,0 +1,160 @@
+# Dynamic light scenes for Frame's room window (optional/scenes, tab "Special"): every `step` seconds the colours
+# of the palette move on by one lamp, faded over the whole step. Lamps that are off stay off.
+# Without this package the room window shows the fixed scenes only.
+#
+# Each run notes itself as "<area>:<context>" in input_text.frame_scenes_dynamic and stops as soon as its note is
+# gone (a new scene in the same room, script.frame_scene_stop, a colour from elsewhere: frame_scene_foreign) or
+# everything in the room is off. The context is the run's own; its light commands carry it, which is how
+# frame_scene_foreign tells them apart.
+
+# Running dynamic scenes, per room "<area>:<context>". Empty after a restart; the loops end with it anyway.
+input_text:
+  frame_scenes_dynamic:
+    name: Frame dynamic light scenes
+    icon: mdi:palette-swatch-variant
+    max: 255
+    initial: ""
+
+script:
+  frame_scene_dynamic:
+    alias: Frame · Dynamic light scene
+    icon: mdi:palette-swatch-variant
+    mode: parallel
+    max: 20
+    fields:
+      room:
+        description: Area of the room (key of the note)
+        example: living_room
+      lights:
+        description: Colour lamps in a fixed order
+        example: '["light.floor_lamp", "light.globe"]'
+      colors:
+        description: Palette as [x, y]
+        example: "[[0.56, 0.40], [0.31, 0.23]]"
+      step:
+        description: Seconds per colour step
+        example: 8
+    sequence:
+      - variables:
+          token: "{{ room }}:{{ context.id }}"
+          n: "{{ colors | count }}"
+          t: "{{ step | default(8) | float(8) }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.frame_scenes_dynamic
+        data:
+          value: >-
+            {{ (states('input_text.frame_scenes_dynamic').split(' ') | select('search', ':')
+                | reject('search', '^' ~ room ~ ':') | list + [token]) | join(' ') }}
+      - repeat:
+          sequence:
+            - delay: "{{ t }}"
+            - if:
+                - condition: template
+                  value_template: >-
+                    {{ token in states('input_text.frame_scenes_dynamic').split(' ')
+                       and lights | select('is_state', 'on') | list | count > 0 }}
+              then:
+                - variables:
+                    shift: "{{ repeat.index }}"
+                - repeat:
+                    for_each: "{{ lights | select('is_state', 'on') | list }}"
+                    sequence:
+                      - action: light.turn_on
+                        continue_on_error: true
+                        target:
+                          entity_id: "{{ repeat.item }}"
+                        data:
+                          xy_color: "{{ colors[(lights.index(repeat.item) + shift) % n] }}"
+                          transition: "{{ t }}"
+          until:
+            - condition: template
+              value_template: >-
+                {{ token not in states('input_text.frame_scenes_dynamic').split(' ')
+                   or lights | select('is_state', 'on') | list | count == 0
+                   or repeat.index >= 10000 }}
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.frame_scenes_dynamic
+        data:
+          value: "{{ states('input_text.frame_scenes_dynamic').split(' ') | select('search', ':') | reject('eq', token) | join(' ') }}"
+
+  # End a room's dynamic scene (room window: another scene, a colour or "All off")
+  frame_scene_stop:
+    alias: Frame · Stop dynamic light scene
+    icon: mdi:stop-circle-outline
+    mode: queued
+    fields:
+      room:
+        description: Area of the room
+        example: living_room
+    sequence:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.frame_scenes_dynamic
+        data:
+          value: >-
+            {{ states('input_text.frame_scenes_dynamic').split(' ') | select('search', ':')
+               | reject('search', '^' ~ room ~ ':') | join(' ') }}
+
+automation:
+  # A dynamic scene ends as soon as something else gives a lamp in its room a colour (an automation, a switch, an app,
+  # a scene); otherwise the loop would recolour it at the next step. The loop's own commands carry its context and
+  # don't count. Switching on, off or dimming ends nothing: lamps switched on again rejoin the loop.
+  - id: frame_scene_foreign
+    alias: "Frame: end dynamic light scene on a foreign colour"
+    description: Removes a dynamic scene's note from input_text.frame_scenes_dynamic when another command recolours a lamp in its room.
+    mode: queued
+    max: 50
+    triggers:
+      - trigger: event
+        event_type: call_service
+        event_data:
+          domain: light
+          service: turn_on
+      - trigger: event
+        event_type: call_service
+        event_data:
+          domain: scene
+          service: turn_on
+    conditions:
+      - condition: template
+        value_template: "{{ ':' in states('input_text.frame_scenes_dynamic') }}"
+      - condition: template
+        value_template: >-
+          {{ trigger.event.data.domain == 'scene'
+             or (trigger.event.data.service_data or {}).keys() | select('in', ['xy_color', 'hs_color', 'rgb_color',
+                'rgbw_color', 'rgbww_color', 'color_temp', 'color_temp_kelvin', 'kelvin', 'color_name', 'white',
+                'effect', 'profile']) | list | count > 0 }}
+    actions:
+      - variables:
+          # areas of every lamp involved: directly, through groups/scenes (expand), area or device
+          rooms: >-
+            {% set d = trigger.event.data.service_data or {} %}
+            {% set ns = namespace(r=[]) %}
+            {% for k in ['entity_id', 'area_id', 'device_id'] %}
+              {% set v = d.get(k, []) %}
+              {% for x in ([v] if v is string else v | list) %}
+                {% set ns.r = ns.r + [x if k == 'area_id' else area_id(x)] %}
+                {% if k == 'entity_id' %}
+                  {% set ns.r = ns.r + (expand(x) | map(attribute='entity_id') | map('area_id') | list) %}
+                {% endif %}
+              {% endfor %}
+            {% endfor %}
+            {{ ns.r | reject('none') | unique | list }}
+          rest: >-
+            {% set ns = namespace(k=[]) %}
+            {% for t in states('input_text.frame_scenes_dynamic').split(' ') | select('search', ':') %}
+              {% set r, c = t.split(':', 1) %}
+              {% if r not in rooms or c == trigger.event.context.id %}{% set ns.k = ns.k + [t] %}{% endif %}
+            {% endfor %}
+            {{ ns.k | join(' ') }}
+      - if:
+          - condition: template
+            value_template: "{{ rest != states('input_text.frame_scenes_dynamic') }}"
+        then:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.frame_scenes_dynamic
+            data:
+              value: "{{ rest }}"

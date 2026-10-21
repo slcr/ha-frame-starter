@@ -63,6 +63,12 @@ frame:
     # More calendar colours without a person (holidays, birthdays ...)
     categories: []
     weather: weather.home
+    # What to wear (frame_weather, and the children next to frame_clock): the outfit changes below these
+    # feels-like temperatures in °C (the lowest of the next 12 daytime hours). Gusts from gusts_from km/h.
+    wear: { winter: 0, coat: 6, jacket: 12, light: 17, sweater: 22 }
+    gusts_from: 50
+    # Pages that live in the clock menu (tap the small clock in the rail) instead of the rail: view paths
+    menu_pages: [energy]
     # Travel time in seconds for covers that do not report their position while moving
     # (e.g. cover.living_room_blind: 25). The slider estimates the position on the way.
     cover_travel: {}
@@ -71,6 +77,23 @@ frame:
     # flights:
     #   entity: sensor.flightradar24_current_in_area
     #   radius_km: 5
+    # optional/timer: a kitchen timer behind the big clock. Uncomment after copying optional/timer;
+    # speakers: the media players it may ring on (chosen in the timer window).
+    # timer:
+    #   speakers:
+    #     - entity: media_player.kitchen
+    #       name: Kitchen
+    # optional/scenes: scene pictures in the room window (tap a light tile with `area:`). Uncomment after
+    # running optional/scenes/scenes.py and copying optional/scenes.
+    # scenes: true
+    # Ask: a button in the rail that opens Assist in Frame style (www/frame/assist.js). pipeline: the id of an
+    # Assist pipeline (Settings → Voice assistants, the id is in the URL), else the last one used.
+    # speaker: also read each answer out there; tts/voice/language/volume: how (volume 0–100, Sonos).
+    # ask:
+    #   pipeline: 01abcdefghjkmnpqrstvwxyz12
+    #   speaker: media_player.kitchen
+    #   tts: tts.home_assistant_cloud
+    #   volume: 25
     # Translate or reword any UI string; keys are listed at the top of www/frame/frame.js (TEXT)
     text: {}
     # ------------------------------------------------------------------

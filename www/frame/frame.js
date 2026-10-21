@@ -38,6 +38,94 @@ window.__frameGlowFlush = (root) => root && root.querySelectorAll('[data-glow]')
   el.removeAttribute('data-glow');
 });
 
+// Clock menu (frame_rail): the pages listed in `menu_pages`, then a link to Home Assistant's settings. It lives
+// outside the rail so it stays visible over the phone's scrolling top bar. frame_rail puts the entries into
+// window.__frameMenuData = {items: [{path, label, icon}], active, settings: {href, label, icon}, aria}.
+let closeFrameMenu = null;
+window.__frameMenu = (event, anchor) => {
+  event.stopPropagation();
+  if (event.button > 0) return;
+  if (closeFrameMenu) { closeFrameMenu(); return; }
+  const D = window.__frameMenuData || { items: [] };
+  const rail = anchor.getRootNode(), host = document.createElement('div');
+  host.style.cssText = 'position:fixed;inset:0;z-index:1000;';
+  const root = host.attachShadow({ mode: 'open' });
+  window.__frameStyle(root);
+  const menu = document.createElement('nav');
+  menu.className = 'rail-menu';
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', D.aria || '');
+  const entries = D.items.map((x) => Object.assign({}, x, { href: `/${location.pathname.split('/')[1]}/${x.path}` }));
+  if (D.settings) entries.push(Object.assign({ settings: true }, D.settings));
+  entries.forEach((item) => {
+    if (item.settings && entries.length > 1) {
+      const divider = document.createElement('div');
+      divider.className = 'rail-menu-divider';
+      divider.setAttribute('role', 'separator');
+      menu.appendChild(divider);
+    }
+    const link = document.createElement('a');
+    link.href = item.href;
+    link.setAttribute('role', 'menuitem');
+    link.tabIndex = -1;
+    if (item.path && item.path === D.active) link.setAttribute('aria-current', 'page');
+    link.innerHTML = `<ha-icon icon="${item.icon}"></ha-icon><span></span>`;
+    link.querySelector('span').textContent = item.label;
+    link.addEventListener('click', (ev) => {
+      if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+      ev.preventDefault();
+      close(false);
+      // settings: a full load, so kiosk-mode brings back Home Assistant's sidebar
+      if (item.settings) location.href = item.href;
+      else window.__frameGo(item.path);
+    });
+    menu.appendChild(link);
+  });
+  root.appendChild(menu);
+  const close = (restore = true) => {
+    host.remove();
+    const trigger = rail.querySelector('.rail-clock');
+    if (trigger) {
+      trigger.setAttribute('aria-expanded', 'false');
+      if (restore) trigger.focus({ preventScroll: true });
+    }
+    window.removeEventListener('resize', dismiss);
+    window.removeEventListener('popstate', dismiss);
+    window.removeEventListener('location-changed', dismiss);
+    window.removeEventListener('scroll', dismiss, true);
+    closeFrameMenu = null;
+  };
+  const dismiss = () => close(false);
+  closeFrameMenu = close;
+  host.addEventListener('pointerdown', (ev) => { if (!ev.composedPath().includes(menu)) close(); });
+  root.addEventListener('keydown', (ev) => {
+    const links = [...menu.querySelectorAll('a')], index = links.indexOf(root.activeElement);
+    if (ev.key === 'Escape' || ev.key === 'Tab') {
+      ev.preventDefault();
+      close();
+    } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(ev.key)) {
+      ev.preventDefault();
+      const next = ev.key === 'Home' ? 0 : ev.key === 'End' ? links.length - 1
+        : (index + (ev.key === 'ArrowDown' ? 1 : -1) + links.length) % links.length;
+      links[next].focus({ preventScroll: true });
+    }
+  });
+  document.body.appendChild(host);
+  anchor.setAttribute('aria-expanded', 'true');
+  // tablet: to the right of the clock, bottom aligned; phone: under the top bar, right aligned
+  const a = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect();
+  const mobile = window.matchMedia('(max-width: 767px)').matches;
+  const left = mobile ? a.right - m.width : a.right + 12;
+  const top = mobile ? a.bottom + 10 : a.bottom - m.height;
+  menu.style.left = `${Math.max(12, Math.min(left, window.innerWidth - m.width - 12))}px`;
+  menu.style.top = `${Math.max(12, Math.min(top, window.innerHeight - m.height - 12))}px`;
+  (menu.querySelector('[aria-current="page"]') || menu.querySelector('a')).focus({ preventScroll: true });
+  window.addEventListener('resize', dismiss);
+  window.addEventListener('popstate', dismiss);
+  window.addEventListener('location-changed', dismiss);
+  window.addEventListener('scroll', dismiss, true);
+};
+
 // UI strings. Override any of them in the `frame` template: variables.text: { today: Heute, ... }
 const TEXT = {
   today: 'Today', tomorrow: 'Tomorrow', yesterday: 'Yesterday', now: 'Now', all_day: 'All day', until: 'until {0}',
@@ -46,14 +134,29 @@ const TEXT = {
   nothing_planned: 'Nothing planned.', enjoy: 'Enjoy the quiet.', next_7_days: 'Next 7 days',
   no_events: 'No events', no_events_sub: 'in the next 7 days', today_all_day: 'Today',
   weather_na: 'Weather not available', forecast_na: 'No hourly forecast', high: 'High', low: 'Low', feels: 'Feels like',
-  rain_from: 'Rain from {0}.', rain_now: 'Rain until {0}.', windy: 'Windy.',
-  wear_coat: 'Coat.', wear_jacket: 'Jacket.', wear_sweater: 'Sweater.', wear_tshirt: 'T-shirt.', wear_umbrella: 'Umbrella.',
+  rain_from: 'Rain from {0}.', rain_now: 'Rain until {0}.', snow_from: 'Snow from {0}.', snow_now: 'Snow until {0}.',
+  sleet_from: 'Sleet from {0}.', sleet_now: 'Sleet until {0}.', storm_from: 'Thunderstorms from {0}.', storm_now: 'Thunderstorms until {0}.',
+  snow: 'Snow.', sleet: 'Sleet.', storm: 'Thunderstorms.', windy: 'Strong gusts.', sunscreen: 'Sunscreen.',
+  wear_winter: 'Winter coat, hat.', wear_coat: 'Warm coat.', wear_jacket: 'Jacket.', wear_light: 'Light jacket.', wear_sweater: 'Long sleeves.',
+  wear_tshirt: 'T-shirt.', wear_layers: 'Layers.', wear_umbrella: 'Umbrella.', wear_rainjacket: 'Rain jacket.',
+  // weather window (weather.js)
+  weather: 'Weather', close: 'Close', next_24h: 'Next 24 hours', next_days: 'Next days', dry: 'Dry', some_rain: 'Some rain',
+  gusts_to: 'Gusts up to {0}', up_to: 'up to {0}', sunrise: 'Sunrise', sunset: 'Sunset', rain_today: 'Rain today', wind: 'Wind', wind_from: 'from {0}',
+  gusts_today: 'Gusts today', uv: 'UV index', uv_0: 'low', uv_1: 'moderate', uv_2: 'high', uv_3: 'very high', compass: 'N,NE,E,SE,S,SW,W,NW',
+  wx_now_0: 'Tonight', wx_now_1: 'This morning', wx_now_2: 'This afternoon', wx_now_3: 'This evening',
+  wx_part_0: 'Overnight', wx_part_1: 'Morning', wx_part_2: 'Afternoon', wx_part_3: 'Evening',
+  wx_tom_0: 'Tomorrow night', wx_tom_1: 'Tomorrow morning', wx_tom_2: 'Tomorrow afternoon', wx_tom_3: 'Tomorrow evening',
   on: 'On', off: 'Off', open: 'Open', closed: 'Closed', opening: 'opening', closing: 'closing',
   n_of_m_on: '{0} of {1} on', all_off: 'All off', lights_on: '{0} on', all_open: 'All open', all_closed: 'All closed',
   n_of_m_open: '{0} of {1} open', n_of_m_closed: '{0} of {1} closed',
   windows_doors: 'Windows & doors', all_closed_big: 'All closed', n_open: '{0} open', open_since: 'Open since',
   opened_today: 'Opened today', last_opened: 'Last opened',
+  countdown: 'Countdown', christmas: 'Christmas', christmas_eve: 'Christmas Eve', easter: 'Easter', new_year: 'New Year',
+  birthday: 'Birthday', turns: 'turns {0}', days: 'days', from_day: 'from {0}', day_off: '1 day off', days_off: '{0} days off',
+  lamps: 'Lamps', done: 'Done', colour: 'Colour', white_light: 'White light',
+  dyn_room: 'Dynamic: the colours slowly move between the lamps. Tap again to shuffle.', dyn_lamp: 'Dynamic: the colours slowly change on this lamp.',
   door: 'Front door', door_open: 'Door open', battery: 'Battery',
+  more_pages: 'More pages and settings', ask: 'Ask', settings: 'Settings', profile: 'Profile',
   low_24h: 'Low', high_24h: 'High', trend_3h: '3 h', target: 'Target', stale: 'No new values',
 };
 
@@ -195,6 +298,92 @@ window.frame = {
       type: 'call_service', domain: 'weather', service: 'get_forecasts',
       target: { entity_id: id }, service_data: { type }, return_response: true,
     }), (res) => (((res && res.response) || {})[id] || {}).forecast || []) : null) || [];
+    // ------------------------------------------------------------ weather
+    const WX_ICON = { 'clear-night': 'mdi:weather-night', cloudy: 'mdi:weather-cloudy', exceptional: 'mdi:alert-circle-outline',
+      fog: 'mdi:weather-fog', hail: 'mdi:weather-hail', lightning: 'mdi:weather-lightning', 'lightning-rainy': 'mdi:weather-lightning-rainy',
+      partlycloudy: 'mdi:weather-partly-cloudy', pouring: 'mdi:weather-pouring', rainy: 'mdi:weather-rainy', snowy: 'mdi:weather-snowy',
+      'snowy-rainy': 'mdi:weather-snowy-rainy', sunny: 'mdi:weather-sunny', windy: 'mdi:weather-windy', 'windy-variant': 'mdi:weather-windy-variant' };
+    // worse weather wins when several hours share a slot
+    const wxRank = (c) => ['clear-night', 'sunny', 'partlycloudy', 'cloudy', 'fog', 'windy', 'windy-variant', 'rainy', 'snowy-rainy', 'snowy',
+      'hail', 'pouring', 'lightning', 'lightning-rainy', 'exceptional'].indexOf(c);
+    const wxIcon = (c, night) => (c === 'partlycloudy' && night ? 'mdi:weather-night-partly-cloudy' : c === 'sunny' && night ? 'mdi:weather-night' : WX_ICON[c] || 'mdi:weather-cloudy');
+    // A condition as Home Assistant names it, in the user's language
+    const wxName = (id, c) => (states[id] && hass && hass.formatEntityState ? hass.formatEntityState(Object.assign({}, states[id], { state: c })) : c);
+    // Units of a weather entity; k converts its wind speed to km/h, mm its precipitation to mm
+    const wxUnits = (id) => {
+      const a = (states[id] || {}).attributes || {};
+      const wind = String(a.wind_speed_unit || 'km/h'), precip = String(a.precipitation_unit || 'mm');
+      return { temp: String(a.temperature_unit || '°C'), wind, precip,
+        k: { 'm/s': 3.6, mph: 1.609, kn: 1.852, 'ft/s': 1.097 }[wind] || 1, mm: precip === 'in' ? 25.4 : 1 };
+    };
+    // Hourly forecast from the current hour: [{t, temp, feel, cond, pop, mm, mmMm, gust, gustKmh, gustReal, uv}]
+    // gust falls back to the wind speed when the integration has no gusts (gustReal stays empty then)
+    const wxHours = (id) => {
+      const u = wxUnits(id), t0 = Date.now() - 3600000;
+      return forecast(id, 'hourly').map((x) => {
+        const gust = x.wind_gust_speed != null ? x.wind_gust_speed : x.wind_speed;
+        return { t: new Date(x.datetime), gustReal: x.wind_gust_speed, temp: x.temperature, feel: x.apparent_temperature != null ? x.apparent_temperature : x.temperature,
+          cond: x.condition, pop: x.precipitation_probability || 0, mm: x.precipitation || 0, mmMm: (x.precipitation || 0) * u.mm,
+          gust, gustKmh: gust == null ? 0 : gust * u.k, uv: x.uv_index };
+      }).filter((x) => x.t.getTime() > t0);
+    };
+    // wet = a rain/snow condition, likely rain or a measurable amount
+    const wet = (x) => /rain|pour|snow|hail|lightning/.test(x.cond || '') || x.pop >= 50 || (x.mmMm != null ? x.mmMm : x.mm) >= 0.3;
+    // What to wear, from the feels-like temperature of the next 12 hours (daytime hours when there are some).
+    // say = clothing, extra = rain/snow, gusts or sunscreen, figs = pictures in www/frame/wx (weather variant first,
+    // then the plain outfit). Thresholds in °C: variables.wear (household settings).
+    const WEAR = Object.assign({ winter: 0, coat: 6, jacket: 12, light: 17, sweater: 22 }, variables.wear || {});
+    const FIGS = {
+      winter: { say: 'wear_winter', rain: 'winter-rain', snow: 'winter-snow' }, warm: { say: 'wear_coat', rain: 'warm-rain' },
+      jacket: { say: 'wear_jacket', rain: 'jacket-rain', wind: 'jacket-wind' }, light: { say: 'wear_light', rain: 'light-rain', wind: 'light-wind' },
+      longsleeve: { say: 'wear_sweater', rain: 'longsleeve-rain', sun: 'longsleeve-sun' }, tshirt: { say: 'wear_tshirt', rain: 'tshirt-rain', sun: 'tshirt-sun' },
+    };
+    const outfit = (id) => {
+      const none = { say: '', extra: [], figs: [] };
+      if (!id || !states[id]) return none;
+      const c = /F/.test(wxUnits(id).temp) ? (v) => (v - 32) / 1.8 : (v) => v;
+      const win = wxHours(id).slice(0, 12);
+      const day = win.filter((x) => x.t.getHours() >= 7 && x.t.getHours() < 22);
+      const feels = (day.length ? day : win).map((x) => c(x.feel)).filter(Number.isFinite);
+      if (!feels.length) return none;
+      const lo = Math.min(...feels), hi = Math.max(...feels);
+      const fig = lo < WEAR.winter ? 'winter' : lo < WEAR.coat ? 'warm' : lo < WEAR.jacket ? 'jacket' : lo < WEAR.light ? 'light' : lo < WEAR.sweater ? 'longsleeve' : 'tshirt';
+      const extra = [];
+      const rain = win.findIndex(wet);
+      const windy = Math.max(0, ...win.map((x) => x.gustKmh)) >= (variables.gusts_from || 50);
+      const uv = Math.max(0, ...win.map((x) => x.uv || 0)) || ((forecast(id, 'daily')[0] || {}).uv_index || 0);
+      const sunny = rain < 0 && uv >= 6 && new Date().getHours() < 16;
+      const cond = rain >= 0 ? win[rain].cond || '' : '';
+      const kind = /lightning/.test(cond) ? 'storm' : cond === 'snowy' ? 'snow' : /snowy-rainy|hail/.test(cond) ? 'sleet' : 'rain';
+      if (rain === 0) {
+        const dry = win.findIndex((x) => !wet(x));
+        extra.push(dry > 0 ? t(`${kind}_now`, hourLabel(win[dry].t)) : kind === 'rain' ? t(windy ? 'wear_rainjacket' : 'wear_umbrella') : t(kind));
+      } else if (rain > 0) extra.push(t(`${kind}_from`, hourLabel(win[rain].t)));
+      if (windy) extra.push(t('windy'));
+      else if (sunny) extra.push(t('sunscreen'));
+      // no umbrella picture in gusts or thunderstorms; snow only where there is a snow picture
+      const F = FIGS[fig];
+      const variant = windy ? F.wind : kind === 'storm' ? null : rain >= 0 ? (kind === 'snow' ? F.snow : kind === 'sleet' ? null : F.rain) : sunny ? F.sun : null;
+      // pictures that just failed to load (figImg) are skipped for an hour
+      const miss = window.__frameNoFig || {};
+      return { say: t(hi - lo >= 8 ? 'wear_layers' : F.say), extra, figs: [variant, fig].filter((f) => f && !(miss[f] > Date.now() - 36e5)) };
+    };
+    // The outfit picture as <img>: when a file is missing it tries the next one, then the image goes away
+    const figImg = (figs) => {
+      if (!figs.length) return '';
+      const src = (n) => `${DIR}wx/${n}.webp${V}`;
+      const onerr = `(window.__frameNoFig = window.__frameNoFig || {})[this.dataset.f] = Date.now();
+        const [n, ...rest] = this.dataset.next.split(' ').filter(Boolean);
+        if (n) { this.dataset.f = n; this.dataset.next = rest.join(' '); this.src = '${DIR}wx/' + n + '.webp${V}'; }
+        else this.parentNode.remove();`;
+      return `<img src="${src(figs[0])}" data-f="${figs[0]}" data-next="${figs.slice(1).join(' ')}" alt="" onerror="${esc(onerr)}">`;
+    };
+    // Tap on a light tile with `area:`: the room window (room.js, loaded on first use)
+    window.__frameRoom = (el) => import(DIR + 'room.js' + V).then((m) => m.open(el, variables))
+      .catch((e) => console.error('Frame: could not load room.js', e));
+    // Tap on frame_weather: the weather window (weather.js, loaded on first use)
+    window.__frameWxOpen = (el, id) => import(DIR + 'weather.js' + V).then((m) => m.open(el, id, variables))
+      .catch((e) => console.error('Frame: could not load weather.js', e));
     // Calendar events between start and end for variables.calendars ([{entity, who, readonly?}]) or the given list, cached 5 min.
     // [{who, cal, uid, rid, rrule, title, loc, desc, status, all_day, from, to, readonly}] sorted by start.
     const parse = (s, allDay) => (allDay ? new Date(`${s}T00:00:00`) : new Date(s));
@@ -300,6 +489,22 @@ window.frame = {
       }, 12100);
     });
     const isOpen = (key) => (open[key] > Date.now() ? ' is-open' : '');
+    // Fold out: tapping an element with data-fold="key" toggles is-open (shows .fold-body); closes after 2 min.
+    // isFolded(key) keeps it open across redraws.
+    const folds = window.__frameFolds || (window.__frameFolds = {});
+    window.__frameFold = window.__frameFold || ((el) => {
+      const box = el.closest('[data-fold]'), key = box.dataset.fold, root = el.getRootNode();
+      const on = !box.classList.contains('is-open');
+      box.classList.toggle('is-open', on);
+      if (!on) { delete folds[key]; return; }
+      folds[key] = Date.now() + 120000;
+      setTimeout(() => {
+        if (folds[key] > Date.now()) return;
+        delete folds[key];
+        root.querySelectorAll(`[data-fold="${key}"]`).forEach((x) => x.classList.remove('is-open'));
+      }, 120100);
+    });
+    const isFolded = (key) => (folds[key] > Date.now() ? ' is-open' : '');
     const tapAttr = (key) => ` data-key="${esc(key)}" onpointerup="__frameMore(this)"`;
     // rows: [[label, value HTML]]; empty values are left out
     const more = (title, rows, note) => `<div class="more">${title ? `<span class="label">${esc(title)}</span>` : ''}
@@ -405,6 +610,8 @@ window.frame = {
     const views = () => ((lovelace() || {}).views || []).filter((v) => v.path && v.visible !== false)
       .map((v) => ({ path: v.path, label: v.title || v.path, icon: v.icon || 'mdi:circle-small' }));
 
+    // A file next to frame.js (www/frame/…) with the same ?v=; absolute paths and URLs stay as they are
+    const asset = (p) => (/^(\/|https?:)/.test(p) ? p : DIR + p + V);
     // Optional modules' scripts next to frame.js (calendar.js, flights.js ...), loaded once per page with the same
     // ?v= as frame.js. Returns true once loaded; until then the card redraws when the script arrives.
     const load = (name) => {
@@ -427,6 +634,16 @@ window.frame = {
       window.__frameFlightsConfig = Object.assign({ dashboard: location.pathname.split('/')[1], dir: DIR, v: V, text: variables.text }, variables.flights);
       load('flights.js');
     }
+    // Ask: Assist in Frame style from the rail (assist.js), switched on by `ask:` in the household settings
+    if (variables.ask && !window.__frameAskConfig) {
+      window.__frameAskConfig = Object.assign({ dashboard: location.pathname.split('/')[1], text: { ask: t('ask') } }, variables.ask);
+      load('assist.js');
+    }
+    // optional/timer: kitchen timer behind the big clock, switched on by `timer:` in the household settings
+    if (variables.timer && !window.__frameTimerConfig) {
+      window.__frameTimerConfig = Object.assign({ dashboard: location.pathname.split('/')[1], dir: DIR, v: V, text: variables.text }, variables.timer);
+      load('timer.js');
+    }
 
     // ------------------------------------------------------------ actions
     window.__frameHass = hass;
@@ -442,7 +659,8 @@ window.frame = {
 
     return { t, lang, h12, pad, esc, nf, time, clock, hourLabel, weekday, dateLong, dateShort, day0, dayDiff, dayLabel, when, dur,
       ok, fmt, num, nameOf, person, people, family, pstyle, avatar, cached, hist, changes, runs, forecast, events, agenda, firstWeekday,
-      lit, glow, glowStyle, areaLights, coverPos, isOpen, tapAttr, more, TIP, tipPlot, spark, flat, moreInfo, lovelace, views, load };
+      wxIcon, wxRank, wxName, wxUnits, wxHours, wet, outfit, figImg,
+      lit, glow, glowStyle, areaLights, coverPos, isOpen, isFolded, asset, tapAttr, more, TIP, tipPlot, spark, flat, moreInfo, lovelace, views, load };
   },
 };
 
@@ -505,6 +723,12 @@ else {
     return define.call(this, name, cls, opts);
   };
 }
+
+// The stylesheet for Frame's own layers outside the cards (kitchen timer)
+window.__frameStyle = (root) => {
+  if (sheet) root.adoptedStyleSheets = [sheet];
+  else { const st = document.createElement('style'); st.textContent = cssText; root.prepend(st); }
+};
 
 try {
   const r = await fetch(DIR + 'frame.css' + V);

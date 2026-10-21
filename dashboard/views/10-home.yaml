@@ -87,6 +87,14 @@
             padding: 0
             card_margin: 0
           cards:
+            # Next birthday or holiday; tap it for the next ones
+            - type: custom:button-card
+              template: frame_countdown
+              variables:
+                birthdays:
+                  - { name: Robin, date: "2014-02-14" }
+                  - { name: Kim, date: "2019-04-15" }
+
             - type: custom:button-card
               template: frame_lock
               entity: lock.front_door

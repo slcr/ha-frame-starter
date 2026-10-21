@@ -30,7 +30,7 @@ Archivo (a variable-width grotesque; the numbers use its narrow 62 % width) and 
 
 Dates, times and numbers follow the language and formats in the user's Home Assistant profile. Weather conditions and entity states ("Locked", "Home") come from Home Assistant's own translations.
 
-Frame's own words are in `TEXT` at the top of `www/frame/frame.js` (the optional modules have theirs in their templates and in `calendar.js` / `flights.js`). Override any of them in `templates/frame.yaml`, without touching the code:
+Frame's own words are in `TEXT` at the top of `www/frame/frame.js`, the weather window's included (the optional modules have theirs in their templates and in `calendar.js` / `flights.js` / `timer.js`). Override any of them in `templates/frame.yaml`, without touching the code:
 
 ```yaml
 frame:

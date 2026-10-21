@@ -1,0 +1,93 @@
+# Kitchen timer for Frame (optional/timer): tap the big clock to open it (www/frame/timer.js).
+# The timer runs here in Home Assistant, not in the browser: it rings even when the tablet sleeps or the page
+# reloads, and every device showing Frame sees the same timer.
+#
+# Done -> input_boolean.frame_timer_ringing turns on; while it is on, the chosen sound plays every 6 seconds as an
+# announcement on the chosen speakers (volume 100 %, music carries on afterwards), for 3 minutes at most.
+# "Stop" in Frame turns it off. Sound and speakers are kept for the next timer.
+# Sounds: www/frame/timer/<name>.mp3. A new name goes into the options below and into SOUNDS in timer.js.
+timer:
+  frame_timer:
+    name: Kitchen timer
+    icon: mdi:timer-outline
+    restore: true
+
+input_boolean:
+  frame_timer_ringing:
+    name: Kitchen timer ringing
+    icon: mdi:bell-ring
+
+input_select:
+  frame_timer_sound:
+    name: Kitchen timer sound
+    icon: mdi:music-note
+    options:
+      - gong
+      - bells
+      - ringer
+      - beep
+      - marimba
+      - alarm
+
+# Comma-separated media_player ids; empty = only the device showing Frame
+input_text:
+  frame_timer_speakers:
+    name: Kitchen timer speakers
+    icon: mdi:speaker
+    max: 255
+
+automation:
+  - id: frame_timer_done
+    alias: "Kitchen timer: done"
+    description: Turns on "Kitchen timer ringing" when the timer has finished.
+    mode: single
+    triggers:
+      - trigger: timer.finished
+        target:
+          entity_id: timer.frame_timer
+    actions:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.frame_timer_ringing
+
+  - id: frame_timer_ring
+    alias: "Kitchen timer: ring"
+    description: Plays the chosen sound on the chosen speakers until someone taps Stop (3 minutes at most).
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.frame_timer_ringing
+        to: "on"
+    variables:
+      speakers: "{{ states('input_text.frame_timer_speakers').split(',') | map('trim') | select('match', 'media_player\\.') | list }}"
+      sound: "/local/frame/timer/{{ states('input_select.frame_timer_sound') }}.mp3"
+    actions:
+      - repeat:
+          while:
+            - condition: state
+              entity_id: input_boolean.frame_timer_ringing
+              state: "on"
+            # 30 × 6 s = 3 min
+            - condition: template
+              value_template: "{{ repeat.index <= 30 }}"
+          sequence:
+            - if:
+                - condition: template
+                  value_template: "{{ speakers | count > 0 }}"
+              then:
+                # Announcement: plays over the music, which carries on afterwards. extra.volume is Sonos
+                # (0–100, the old volume comes back); other players ignore it or skip it (continue_on_error).
+                - action: media_player.play_media
+                  continue_on_error: true
+                  target:
+                    entity_id: "{{ speakers }}"
+                  data:
+                    media_content_id: "{{ sound }}"
+                    media_content_type: music
+                    announce: true
+                    extra:
+                      volume: 100
+            - delay: 6
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.frame_timer_ringing

@@ -29,6 +29,8 @@ for m in "$@"; do
   [ -d "$d" ] || { echo "✗ no optional module '$m' (have: $(ls "$HERE/optional" | tr '\n' ' '))"; continue; }
   [ -d "$d/www/frame" ] && cp -R "$d/www/frame/." "$CONFIG/www/frame/"
   [ -d "$d/dashboard/templates" ] && cp "$d/dashboard/templates/"*.yaml "$CONFIG/frame/templates/"
+  # Home Assistant packages (helpers, automations): replaced like code; needs `packages:` in configuration.yaml
+  if [ -d "$d/packages" ]; then mkdir -p "$CONFIG/packages" && cp "$d/packages/"*.yaml "$CONFIG/packages/"; fi
   if [ -d "$d/dashboard/views" ]; then
     for v in "$d/dashboard/views/"*.yaml; do [ -e "$CONFIG/frame/views/$(basename "$v")" ] || cp "$v" "$CONFIG/frame/views/"; done
   fi

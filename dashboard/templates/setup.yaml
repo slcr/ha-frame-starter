@@ -141,6 +141,7 @@ frame_setup:
         const ids = Object.keys(S), has = (re) => ids.filter((id) => re.test(id + ' ' + (S[id].attributes.friendly_name || '')));
         const prefs = fx.cached('__frameEnergy', 'prefs', 30, () => H.callWS({ type: 'energy/get_prefs' }));
         const flightsOn = !!(tpl.frame && tpl.frame.variables && tpl.frame.variables.flights);
+        const timerOn = !!(tpl.frame && tpl.frame.variables && tpl.frame.variables.timer) && !!S['timer.frame_timer'];
         const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
         const OPT = [
           ['calendar', 'Calendar page', 'Day, 3 days, week and month; add, move and delete events.', !!tpl.frame_calendar,
@@ -149,6 +150,13 @@ frame_setup:
             prefs && (prefs.energy_sources || []).length ? `Energy dashboard set up (${prefs.energy_sources.length} sources)` : '', 'Set up Settings → Dashboards → Energy first'],
           ['flights', 'Planes overhead', 'Planes from Flightradar24 fly across the screen; tap one for its flight card.', flightsOn,
             has(/^sensor\.flightradar24/).length ? 'Flightradar24 found' : '', 'Needs the Flightradar24 integration (HACS)'],
+          ['timer', 'Kitchen timer', 'Tap the clock: a dial and presets; rings here and on your speakers when it’s done.', timerOn,
+            S['timer.frame_timer'] ? 'Timer helpers found' : has(/^media_player\./).length ? `${pl(has(/^media_player\./).length, 'speaker', 'speakers')} to ring on` : '',
+            'Works on its own; speakers are optional'],
+          ['scenes', 'Light scenes', 'Scene pictures in the room window; dynamic ones move the colours between the lamps.',
+            !!(tpl.frame && tpl.frame.variables && tpl.frame.variables.scenes),
+            has(/^light\./).filter((id) => (S[id].attributes.supported_color_modes || []).some((m) => m !== 'onoff')).length ? 'Dimmable lights found' : '',
+            'Needs lights with colour or colour temperature'],
           ['rubbish', 'Rubbish collection', 'Next pickups with painted bins, “put out tonight” reminder.', !!tpl.frame_bins,
             has(/^calendar\..*(waste|bin|trash|rubbish|garbage|refuse|recycl|abfall|muell|müll)/i).length ? 'Waste calendar found' : '', 'Needs a waste calendar (Waste Collection Schedule, HACS)'],
           ['appliances', 'Appliances', 'Washing machine, dishwasher, dryer … while they run or are finished.', !!tpl.frame_appliances,
