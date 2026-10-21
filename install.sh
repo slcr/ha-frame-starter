@@ -7,7 +7,8 @@
 #
 # Safe to run again to update: the runtime (www/frame) and the module templates are replaced, your own files
 # are not. templates/frame.yaml (your household), the views and the theme are only copied when they don't
-# exist yet. Restart Home Assistant after the first install; after an update, bump ?v= of the frame.js resource.
+# exist yet. Restart Home Assistant after the first install; after an update, bump ?v= of the frame.js resource
+# (the rail says so when the browser still runs an older frame.js).
 set -e
 CONFIG="${CONFIG:-/config}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -38,4 +39,4 @@ for m in "$@"; do
   fi
   echo "✓ $m (see optional/$m/README.md for the last step)"
 done
-echo "Done. Reload the Frame dashboard (and restart Home Assistant after the first install)."
+echo "Done. Raise ?v= of the frame.js resource and reload the Frame dashboard (restart Home Assistant after the first install)."

@@ -132,11 +132,15 @@ The card isn't installed or its resource is missing. Check HACS, then reload wit
 
 ### Cards are empty or unstyled
 
-`frame.js` isn't loaded. Check the resource URL (`/local/frame/frame.js?v=1`) and that the file is at `/config/www/frame/frame.js`. The browser console shows `FRAME starter runtime loaded` when it works.
+`frame.js` isn't loaded. Check the resource URL (`/local/frame/frame.js?v=1`) and that the file is at `/config/www/frame/frame.js`. The browser console shows `FRAME starter runtime 2 loaded` (or a newer number) when it works.
 
 ### I edited frame.js or frame.css and nothing changed
 
 Browsers cache `/local/` files. Bump the `?v=` in the resource URL (`?v=2`) and reload.
+
+### After an update: "this browser still runs the old frame.js", or ButtonCardJSTemplateError on the clock and weather
+
+The templates are newer than the `frame.js` your browser runs. Either `install.sh` didn't run after `git pull` (pulling alone doesn't copy anything into `/config`), or the browser still has the old file cached. Run `./install.sh` again with your modules, raise `?v=` on the `frame.js` resource and reload. On a wall tablet you may also need to clear the app's cache.
 
 ### A file under /local/ gives 404 even though it's there
 
@@ -145,6 +149,8 @@ Home Assistant remembers 404s for `/local/` until it restarts. Restart once afte
 ### Weather shows "No hourly forecast"
 
 Your weather integration only has daily forecasts. Try Met.no or Pirate Weather, or remove the hourly strip.
+
+When the weather integration is down for a while (Open-Meteo times out now and then and the entity goes unavailable), Frame keeps showing the last forecast it got, for up to 12 hours and across reloads, and asks again every minute.
 
 ### Climate tiles have no sparkline
 

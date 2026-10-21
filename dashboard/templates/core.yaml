@@ -45,6 +45,20 @@ frame_rail:
   custom_fields:
     body: |
       [[[
+        // frame.js older than these templates (not reinstalled, or the browser keeps the old one under the same
+        // ?v=): one notice on top instead of only ButtonCardJSTemplateError cards. Raise with RUNTIME in frame.js.
+        const FRAME_RUNTIME = 2;
+        if (window.frame && (window.frame.runtime || 0) < FRAME_RUNTIME && !document.getElementById('frame-outdated')) {
+          const note = document.createElement('div');
+          note.id = 'frame-outdated';
+          note.setAttribute('role', 'alert');
+          note.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:1001;box-sizing:border-box;'
+            + 'width:max-content;max-width:calc(100% - 32px);padding:12px 16px;border-radius:12px;background:#111111;color:#F2EEE6;'
+            + 'font:600 15px/1.4 Archivo,system-ui,sans-serif;box-shadow:0 8px 24px rgb(0 0 0 / .25)';
+          note.textContent = (variables.text || {}).runtime_old || 'Frame was updated, but this browser still runs the old frame.js. '
+            + 'Run install.sh again, raise ?v= of the frame.js resource (Settings → Dashboards → Resources) and reload.';
+          document.body.appendChild(note);
+        }
         const fx = variables.fx;
         if (!fx) return '';
         const all = variables.pages.length ? variables.pages : fx.views();
@@ -119,7 +133,10 @@ frame_weather:
         const hours = fx.wxHours(id);
         const daily = fx.forecast(id, 'daily');
 
-        const temp = r(cur.attributes.temperature);
+        // entity down (e.g. Open-Meteo timing out): now from the kept forecast (fx.forecast)
+        const up = fx.ok(id), now0 = hours[0];
+        const cond = up ? cur.state : now0 && now0.cond;
+        const temp = r(cur.attributes.temperature != null ? cur.attributes.temperature : now0 ? now0.temp : null);
         const next24 = hours.slice(0, 24);
         const hi = daily.length ? r(daily[0].temperature) : next24.length ? r(Math.max(...next24.map((x) => x.temp))) : null;
         const lo = daily.length && daily[0].templow != null ? r(daily[0].templow) : next24.length ? r(Math.min(...next24.map((x) => x.temp))) : null;
@@ -161,7 +178,7 @@ frame_weather:
         return `<div class="wx tap-zone" onpointerup="__frameWxOpen(this,'${fx.esc(id)}')">
           <div class="wx-top">
             <span class="wx-temp num">${temp != null ? temp + '°' : '–'}</span>
-            <span class="wx-meta"><b><ha-icon icon="${fx.wxIcon(cur.state, night)}"></ha-icon>${fx.esc(fx.fmt(id))}</b>
+            <span class="wx-meta"><b><ha-icon icon="${fx.wxIcon(cond, night)}"></ha-icon>${fx.esc(up || !cond ? fx.fmt(id) : fx.wxName(id, cond))}</b>
               ${hi != null ? `<span>${fx.t('high')} ${hi}°${lo != null ? ` · ${fx.t('low')} ${lo}°` : ''}</span>` : ''}
               ${feel != null ? `<span>${fx.t('feels')} ${feel}°</span>` : ''}</span>
             <div class="wx-say">${say ? `<i>${say}</i>` : ''}${extra.length ? `<span>${extra.join(' ')}</span>` : ''}</div>

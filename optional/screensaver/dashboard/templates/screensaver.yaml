@@ -18,7 +18,8 @@ frame_screensaver:
         const ICON = { 'clear-night': 'mdi:weather-night', cloudy: 'mdi:weather-cloudy', fog: 'mdi:weather-fog', partlycloudy: 'mdi:weather-partly-cloudy',
           pouring: 'mdi:weather-pouring', rainy: 'mdi:weather-rainy', snowy: 'mdi:weather-snowy', sunny: 'mdi:weather-sunny', windy: 'mdi:weather-windy',
           lightning: 'mdi:weather-lightning', 'lightning-rainy': 'mdi:weather-lightning-rainy', hail: 'mdi:weather-hail', 'snowy-rainy': 'mdi:weather-snowy-rainy' };
-        const wx = cur ? `<ha-icon icon="${ICON[cur.state] || 'mdi:weather-cloudy'}"></ha-icon>${Math.round(cur.attributes.temperature)}° · ${fx.esc(fx.fmt(variables.weather))}` : '';
+        // nothing while the weather entity is down (no "NaN° · Unavailable" on the wall)
+        const wx = cur && fx.ok(variables.weather) && cur.attributes.temperature != null ? `<ha-icon icon="${ICON[cur.state] || 'mdi:weather-cloudy'}"></ha-icon>${Math.round(cur.attributes.temperature)}° · ${fx.esc(fx.fmt(variables.weather))}` : '';
         const next = fx.agenda(1).find((e) => !e.all_day && e.to > now);
         const nx = next ? `<span class="amb-dot" style="${fx.pstyle(fx.person(next.who))}"></span>${next.from <= now ? fx.t('now') : fx.time(next.from)} · ${fx.esc(next.title)}` : '';
         return `<div class="amb">

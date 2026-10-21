@@ -66,7 +66,8 @@ export const open = (el, id, vars) => {
     const deg = (v) => (v == null || isNaN(v) ? '–' : `${Math.round(v)}°`);
     const hours = fx.wxHours(id).filter((x) => x.t.getTime() > now - 3600000);
     const daily = fx.forecast(id, 'daily');
-    const cond = cur ? cur.state : hours[0] && hours[0].cond;
+    // entity down: the condition of the kept forecast (fx.forecast)
+    const cond = fx.ok(id) ? cur.state : hours[0] && hours[0].cond;
     const temp = a.temperature != null ? a.temperature : hours[0] && hours[0].temp;
     const today = hours.filter((x) => fx.dayDiff(x.t, now) === 0);
     const hi = daily.length ? daily[0].temperature : today.length ? Math.max(...today.map((x) => x.temp)) : null;

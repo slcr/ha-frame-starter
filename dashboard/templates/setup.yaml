@@ -28,7 +28,9 @@ frame_setup:
         const theme = H.themes && H.themes.themes && H.themes.themes.Frame;
         const vt = (H.themes && H.themes.theme) || '';
         const checks = [
-          [true, 'Frame runtime', 'frame.js and frame.css are loaded', ''],
+          // FRAME_RUNTIME: as in frame_rail (templates/core.yaml)
+          [(window.frame.runtime || 0) >= 2, 'Frame runtime', 'frame.js and frame.css are loaded',
+            'frame.js is older than the templates: run install.sh again, raise ?v= of the frame.js resource and reload.'],
           [true, 'button-card', 'Installed and rendering', ''],
           [!!customElements.get('layout-card'), 'layout-card', 'Installed', 'HACS → search “layout-card” → Download, then reload the page.'],
           [fontOk('Archivo') && fontOk('Instrument Serif'), 'Fonts', 'Archivo and Instrument Serif',

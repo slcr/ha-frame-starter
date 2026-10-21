@@ -11,6 +11,12 @@
 //   page after a few seconds, frame.js loads it from /hacsfiles/button-card/button-card.js.
 //
 // After editing frame.js or frame.css, bump ?v= in the resource URL so browsers fetch the new files.
+//
+// RUNTIME: the version of the helpers. Raise it when a template starts using a new helper, and raise
+// FRAME_RUNTIME in templates/core.yaml (frame_rail) and setup.yaml with it: when the templates are newer than
+// the frame.js the browser runs (not reinstalled, or cached under the old ?v=), the rail says so instead of
+// cards failing with ButtonCardJSTemplateError.
+const RUNTIME = 2;
 const V = new URL(import.meta.url).search;
 const DIR = new URL('.', import.meta.url).pathname;
 const BUTTON_CARD = '/hacsfiles/button-card/button-card.js';
@@ -169,6 +175,7 @@ const TEXT = {
 };
 
 window.frame = {
+  runtime: RUNTIME,
   fx(states, hass, variables) {
     const card = this;
     const T = Object.assign({}, TEXT, variables.text || {});
@@ -302,10 +309,35 @@ window.frame = {
     };
     // Weather forecast via weather.get_forecasts (type: hourly | daily | twice_daily), cached 15 min.
     // Returns [] when the integration does not offer that type.
-    const forecast = (id, type) => (id ? cached('__frameWx', id + '/' + type, 15, () => hass.callWS({
-      type: 'call_service', domain: 'weather', service: 'get_forecasts',
-      target: { entity_id: id }, service_data: { type }, return_response: true,
-    }), (res) => (((res && res.response) || {})[id] || {}).forecast || []) : null) || [];
+    // When the integration is down (Open-Meteo times out now and then, the entity is unavailable for up to an
+    // hour), Home Assistant answers with no forecast. The last one stays then, also across reloads (localStorage,
+    // up to 12 h, past hours and days dropped), and it asks again every minute until there is one.
+    const WX_KEEP = 12 * 3600000;
+    const wxSaved = (key) => {
+      try {
+        const s = JSON.parse(localStorage.getItem('frame-wx:' + key) || 'null');
+        if (!s || !Array.isArray(s.list) || Date.now() - s.at > WX_KEEP) return null;
+        if (/hourly$/.test(key)) return s.list.filter((x) => new Date(x.datetime).getTime() > Date.now() - 3600000);
+        // daily lists start with the day they were saved on
+        const gone = dayDiff(new Date(), new Date(s.at));
+        return s.list.slice(/twice_daily$/.test(key) ? gone * 2 : gone);
+      } catch (e) { return null; }
+    };
+    const forecast = (id, type) => {
+      if (!id) return [];
+      const key = id + '/' + type;
+      const list = cached('__frameWx', key, 15, () => hass.callWS({
+        type: 'call_service', domain: 'weather', service: 'get_forecasts',
+        target: { entity_id: id }, service_data: { type }, return_response: true,
+      }), (res) => {
+        const f = (((res && res.response) || {})[id] || {}).forecast || [];
+        // empty while the entity is down or after a forecast: a failed answer (cached keeps the last one, retries)
+        if (!f.length && (!ok(id) || wxSaved(key))) throw new Error('no forecast');
+        if (f.length) try { localStorage.setItem('frame-wx:' + key, JSON.stringify({ at: Date.now(), list: f })); } catch (e) { /* full or blocked */ }
+        return f;
+      });
+      return (list && list.length ? list : wxSaved(key)) || [];
+    };
     // ------------------------------------------------------------ weather
     const WX_ICON = { 'clear-night': 'mdi:weather-night', cloudy: 'mdi:weather-cloudy', exceptional: 'mdi:alert-circle-outline',
       fog: 'mdi:weather-fog', hail: 'mdi:weather-hail', lightning: 'mdi:weather-lightning', 'lightning-rainy': 'mdi:weather-lightning-rainy',
@@ -759,4 +791,4 @@ else {
   const BC = customElements.get('button-card');
   if (BC) { patch(BC); refreshAll(); }
 }
-console.info('%c FRAME %c starter runtime loaded ', 'background:#111;color:#F2EEE6;font-weight:700', 'color:#111');
+console.info(`%c FRAME %c starter runtime ${RUNTIME} loaded `, 'background:#111;color:#F2EEE6;font-weight:700', 'color:#111');
