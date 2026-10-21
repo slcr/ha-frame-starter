@@ -31,6 +31,8 @@ for m in "$@"; do
   [ -d "$d/dashboard/templates" ] && cp "$d/dashboard/templates/"*.yaml "$CONFIG/frame/templates/"
   # Home Assistant packages (helpers, automations): replaced like code; needs `packages:` in configuration.yaml
   if [ -d "$d/packages" ]; then mkdir -p "$CONFIG/packages" && cp "$d/packages/"*.yaml "$CONFIG/packages/"; fi
+  # Jinja macros the packages import; replaced like code
+  if [ -d "$d/custom_templates" ]; then mkdir -p "$CONFIG/custom_templates" && cp "$d/custom_templates/"*.jinja "$CONFIG/custom_templates/"; fi
   if [ -d "$d/dashboard/views" ]; then
     for v in "$d/dashboard/views/"*.yaml; do [ -e "$CONFIG/frame/views/$(basename "$v")" ] || cp "$v" "$CONFIG/frame/views/"; done
   fi

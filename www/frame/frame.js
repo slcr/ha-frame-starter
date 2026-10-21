@@ -155,6 +155,14 @@ const TEXT = {
   birthday: 'Birthday', turns: 'turns {0}', days: 'days', from_day: 'from {0}', day_off: '1 day off', days_off: '{0} days off',
   lamps: 'Lamps', done: 'Done', colour: 'Colour', white_light: 'White light',
   dyn_room: 'Dynamic: the colours slowly move between the lamps. Tap again to shuffle.', dyn_lamp: 'Dynamic: the colours slowly change on this lamp.',
+  // health window (optional/health)
+  hl_weight: 'Weight', hl_steps: 'Steps today', hl_steps_unit: 'steps', hl_sleep: 'Sleep', hl_rhr: 'Resting heart rate', hl_hr: 'Heart rate', hl_hrv: 'HRV',
+  hl_move: 'Move', hl_exercise: 'Exercise', hl_stand: 'Stand', hl_activity: 'Activity today', hl_goal: 'Goal {0} kg', hl_to_go: '{0} kg to go', hl_reached: 'reached',
+  hl_last_night: 'Last night', hl_hours_sleep: 'h of sleep', hl_30_nights: 'Last 30 nights', hl_30_days: '30 days', hl_48_hours: '48 h', hl_since: 'since {0}',
+  hl_st_Awake: 'Awake', hl_st_REM: 'REM', hl_st_Core: 'Core', hl_st_Deep: 'Deep',
+  hl_no_stages: 'The stages over the night appear once Health Auto Export sends single sleep stages (see optional/health).',
+  hl_from_scale: 'Weight from the scale.', hl_from_scale_health: 'Weight from the scale, everything else from Apple Health.',
+  hl_synced: 'Apple Health last sent {0}.', hl_never_synced: 'Apple Health: nothing received yet.',
   door: 'Front door', door_open: 'Door open', battery: 'Battery',
   more_pages: 'More pages and settings', ask: 'Ask', settings: 'Settings', profile: 'Profile',
   low_24h: 'Low', high_24h: 'High', trend_3h: '3 h', target: 'Target', stale: 'No new values',
@@ -381,6 +389,11 @@ window.frame = {
     // Tap on a light tile with `area:`: the room window (room.js, loaded on first use)
     window.__frameRoom = (el) => import(DIR + 'room.js' + V).then((m) => m.open(el, variables))
       .catch((e) => console.error('Frame: could not load room.js', e));
+    // optional/health: tap a person in frame_people for their health window (health.js, loaded on first use)
+    window.__frameHealth = (el, ev) => {
+      if (ev && ev.button > 0) return;
+      import(DIR + 'health.js' + V).then((m) => m.open(el, variables)).catch((e) => console.error('Frame: could not load health.js', e));
+    };
     // Tap on frame_weather: the weather window (weather.js, loaded on first use)
     window.__frameWxOpen = (el, id) => import(DIR + 'weather.js' + V).then((m) => m.open(el, id, variables))
       .catch((e) => console.error('Frame: could not load weather.js', e));

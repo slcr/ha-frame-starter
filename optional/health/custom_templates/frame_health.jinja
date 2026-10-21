@@ -1,0 +1,52 @@
+{#- Health Auto Export (iPhone app) -> packages/frame_health.yaml.
+    payload: trigger.json from the webhook
+    names:   possible names of the metric, e.g. ['step_count']
+    field:   field in the data point, e.g. 'qty' or 'totalSleep'
+    Returns the field of the newest data point, or nothing when the metric is missing from this upload.
+    The metrics are unpacked here instead of in a variables: line, which may be 256 KB at most as text.
+    Only summarised data points (with `date`) count; single sleep stages (startDate/endDate) are read by
+    hae_sleep_phases. -#}
+{%- macro hae_value(payload, names, field) -%}
+{%- set metrics = ((payload or {}).data or {}).metrics or [] -%}
+{%- set found = metrics | selectattr('name', 'in', names) | list -%}
+{%- set data = found[0].data if found and found[0].data is list else [] -%}
+{%- set data = data | selectattr('date', 'defined') | list -%}
+{%- if data -%}{{ (data | sort(attribute='date') | last)[field] | default('') }}{%- endif -%}
+{%- endmacro -%}
+
+{#- Sleep stages of last night from sleep_analysis data that isn't summarised (a second automation in the app,
+    "Summarize data" off). A list [[start, end, stage]] with ISO times, stage Awake/REM/Deep/Core. The names are
+    recognised by parts of words: the app writes them in the iPhone's language (Core/Deep/Awake/In Bed in English,
+    Kern/Tief/Wach/Im Bett in German). Sleep without a stage counts as Core, "In Bed" is left out.
+    The night ends, going backwards, at the first gap over 4 hours. Empty when there are no stages. -#}
+{%- macro hae_sleep_phases(payload) -%}
+{%- set metrics = ((payload or {}).data or {}).metrics or [] -%}
+{%- set found = metrics | selectattr('name', 'eq', 'sleep_analysis') | list -%}
+{%- set data = found[0].data if found and found[0].data is list else [] -%}
+{%- set pts = data | selectattr('startDate', 'defined') | selectattr('value', 'defined') | sort(attribute='startDate', reverse=true) | list -%}
+{%- set ns = namespace(out=[], start=none) -%}
+{%- for p in pts -%}
+{%- set v = p.value | string | lower -%}
+{%- set st = 'Awake' if ('awake' in v or 'wach' in v) else 'REM' if 'rem' in v else 'Deep' if ('deep' in v or 'tief' in v)
+  else none if ('bed' in v or 'bett' in v) else 'Core' -%}
+{%- if st is none -%}{%- continue -%}{%- endif -%}
+{%- set s = strptime(p.startDate, '%Y-%m-%d %H:%M:%S %z', none) -%}
+{%- set e = strptime(p.endDate, '%Y-%m-%d %H:%M:%S %z', none) -%}
+{%- if s is none or e is none or (ns.start is not none and (ns.start - e).total_seconds() > 14400) -%}{%- break -%}{%- endif -%}
+{%- set ns.out = [[s.isoformat(), e.isoformat(), st]] + ns.out -%}
+{%- set ns.start = s -%}
+{%- endfor -%}
+{{ ns.out | to_json if ns.out else '' }}
+{%- endmacro -%}
+
+{#- Today's values of a metric: "count;min;max;mean" from every data point with today's `date`.
+    With single values (an automation with "Summarize data" off) that's the day's span, with the summarised
+    daily value just that one value (count 1). Empty when nothing from today is included. -#}
+{%- macro hae_today(payload, names, field) -%}
+{%- set metrics = ((payload or {}).data or {}).metrics or [] -%}
+{%- set found = metrics | selectattr('name', 'in', names) | list -%}
+{%- set data = found[0].data if found and found[0].data is list else [] -%}
+{%- set today = now().strftime('%Y-%m-%d') -%}
+{%- set vals = data | selectattr('date', 'defined') | selectattr('date', 'search', '^' ~ today) | map(attribute=field) | select('is_number') | map('float') | list -%}
+{%- if vals -%}{{ vals | count }};{{ vals | min }};{{ vals | max }};{{ (vals | sum / vals | count) | round(1) }}{%- endif -%}
+{%- endmacro -%}

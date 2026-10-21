@@ -86,6 +86,28 @@ frame:
     # optional/scenes: scene pictures in the room window (tap a light tile with `area:`). Uncomment after
     # running optional/scenes/scenes.py and copying optional/scenes.
     # scenes: true
+    # optional/health: tap a person in frame_people for their health window. Per person id the sensors from
+    # packages/frame_health.yaml (any can be left out) and the ring goals as set on the watch.
+    # health:
+    #   alex:
+    #     weight: sensor.bathroom_scale_alex_weight
+    #     goal: sensor.bathroom_scale_alex_weight_goal
+    #     steps: sensor.alex_steps
+    #     rhr: sensor.alex_resting_heart_rate
+    #     hr: sensor.alex_heart_rate
+    #     hr_min: sensor.alex_heart_rate_min
+    #     hr_max: sensor.alex_heart_rate_max
+    #     hrv: sensor.alex_hrv
+    #     hrv_min: sensor.alex_hrv_min
+    #     hrv_max: sensor.alex_hrv_max
+    #     sleep: sensor.alex_sleep
+    #     move: sensor.alex_move
+    #     move_goal: 500
+    #     exercise: sensor.alex_exercise
+    #     exercise_goal: 30
+    #     stand: sensor.alex_stand
+    #     stand_goal: 12
+    #     sync: sensor.alex_health_export
     # Ask: a button in the rail that opens Assist in Frame style (www/frame/assist.js). pipeline: the id of an
     # Assist pipeline (Settings → Voice assistants, the id is in the URL), else the last one used.
     # speaker: also read each answer out there; tts/voice/language/volume: how (volume 0–100, Sonos).

@@ -171,6 +171,7 @@ frame_weather:
       ]]]
 
 # Who is home: everyone from `people` that has a `person` entity. Away = ring avatar and the zone.
+# With optional/health, tapping someone opens their health window (weight, activity, heart, sleep).
 frame_people:
   template: frame
   custom_fields:
@@ -178,11 +179,15 @@ frame_people:
       [[[
         const fx = variables.fx;
         if (!fx) return '';
+        // optional/health: a person with any of their sensors under `health:` opens their health window on tap
+        const health = variables.health || {};
         const rows = fx.people.filter((p) => p.person).map((p) => {
           const s = states[p.person];
           const home = !!s && s.state === 'home';
           const text = !s ? fx.t('unknown') : fx.fmt(p.person);
-          return `<div class="who-row${home ? ' is-home' : ''}">${fx.avatar(p, 34, !home)}<b>${fx.esc(p.name)}</b><small>${fx.esc(text)}</small></div>`;
+          const has = health[p.id] && Object.values(health[p.id]).some((id) => typeof id === 'string' && states[id]);
+          const tap = has ? ` has-health" data-who="${fx.esc(p.id)}" onpointerup="__frameHealth(this,event)` : '';
+          return `<div class="who-row${home ? ' is-home' : ''}${tap}">${fx.avatar(p, 34, !home)}<b>${fx.esc(p.name)}</b><small>${fx.esc(text)}</small></div>`;
         }).join('');
         return `<div class="who">${rows}</div>`;
       ]]]

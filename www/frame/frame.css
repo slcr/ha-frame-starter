@@ -851,6 +851,73 @@ ha-card { font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: a
 .amb-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px #FFFFFF; }
 
 /* ---------- phone (< 768 px): one column, the page scrolls, the rail becomes a top bar */
+/* ---------- health window (optional/health, health.js): tiles with 30 days in the person's colour, rings, last night */
+.who-row.has-health { pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ced.ced--person { width: min(980px, calc(100vw - 48px)); max-height: 86vh; overflow-y: auto; overscroll-behavior: contain;
+  border-top: 10px solid var(--c); --st-Awake: #F27A5E; --st-REM: #5BC4EF; --st-Core: #2F7BF5; --st-Deep: #3A2FA8; }
+.ced--person .ced-body { display: flex; flex-direction: column; gap: 14px; }
+.ced--person .ced-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.pp-tiles { display: grid; grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); gap: 10px; }
+.pp-m { position: relative; overflow: hidden; min-height: 150px; box-sizing: border-box; background: var(--paper); border-radius: var(--r);
+  padding: 12px 16px 78px; display: flex; flex-direction: column; gap: 2px; }
+.pp-m > :not(.pp-spark) { position: relative; z-index: 1; }
+.pp-m > b { font-size: 34px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pp-m > b small, .sl-dur small { font-size: 16px; font-weight: 700; color: var(--mute); margin-left: 5px; }
+.pp-sub { font-size: 15px; color: var(--ink-2); }
+/* the chart at the bottom of the tile, under the value instead of behind it */
+.pp-spark { position: absolute; left: 0; right: 0; bottom: 0; height: 66px; }
+.pp-spark .spark { height: 100%; }
+.pp-spark .pp-chart.ch-plot { position: absolute; inset: 4px 14px 10px; }
+.pp-spark .ch-tip { top: auto; bottom: 100%; margin-bottom: 4px; }
+.pp-chart .bars { inset: 0; gap: 2px; }
+.pp-chart .bars i { background: rgb(var(--c-rgb) / .35); border-radius: 3px 3px 1px 1px; }
+.pp-chart .bars i.is-now { background: var(--c); }
+.pp-chart .bars i.is-gap { flex: 1; background: none; }
+.pp-chart polyline { fill: none; stroke: rgb(var(--c-rgb) / .45); stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.pp-dot { position: absolute; z-index: 1; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--c); }
+.pp-cap { position: absolute; width: 2.2%; min-height: 3px; transform: translateX(-50%); border-radius: 99px; background: rgb(var(--c-rgb) / .28); }
+.pp-spark .spark-a { fill: rgb(var(--c-rgb) / .10); }
+.pp-spark .spark-l { stroke: rgb(var(--c-rgb) / .55); }
+.pp-note { font-size: 14px; color: var(--mute); }
+.pp-range { float: right; font-style: normal; font-weight: 700; letter-spacing: .02em; text-transform: none; opacity: .8; }
+/* activity rings */
+.act { display: flex; align-items: center; gap: 28px; background: var(--paper); border-radius: var(--r); padding: 16px 22px; }
+.ar { width: 128px; height: 128px; flex: none; }
+.ar circle { fill: none; stroke-width: 13; stroke-linecap: round; }
+.ar .ar-track { opacity: .16; }
+.ar-legend { flex: 1; display: grid; grid-template-columns: auto auto auto minmax(200px, 1fr); justify-content: start; gap: 4px 40px; }
+.ar-legend > .label { grid-column: 1 / -1; margin-bottom: 4px; }
+.ar-row { display: flex; flex-direction: column; gap: 2px; }
+.ar-row > b { font-size: 34px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ar-row > b small { font-size: 16px; font-weight: 700; color: var(--mute); margin-left: 4px; }
+.ar-steps .pp-spark { position: relative; height: 38px; margin-top: 6px; }
+.ar-steps .pp-spark .pp-chart.ch-plot { inset: 0; }
+/* last night: the stages in the Health app's colours */
+.sl { display: flex; flex-direction: column; gap: 14px; background: var(--paper); border-radius: var(--r); padding: 16px 18px 14px; }
+.sl-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px 24px; flex-wrap: wrap; }
+.sl-dur { display: block; font-size: 44px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.sl-legend { display: grid; grid-template-columns: repeat(4, auto); gap: 6px 22px; }
+.sl-st { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; color: var(--ink-2); white-space: nowrap; }
+.sl-st i { width: 12px; height: 12px; border-radius: 50%; }
+.sl-st b { font-size: 17px; font-weight: 800; color: var(--ink); margin-left: 2px; font-variant-numeric: tabular-nums; }
+.st-Awake { background: var(--st-Awake); fill: var(--st-Awake); }
+.st-REM { background: var(--st-REM); fill: var(--st-REM); }
+.st-Core { background: var(--st-Core); fill: var(--st-Core); }
+.st-Deep { background: var(--st-Deep); fill: var(--st-Deep); }
+.sl-graph { position: relative; padding-bottom: 20px; }
+.sl-plot.ch-plot { flex: none; height: 140px; }
+.sl-plot .ch-tip, .sl-nights .ch-tip { top: auto; bottom: 100%; margin-bottom: 6px; }
+.sl-links line { stroke: rgb(17 17 17 / .18); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.sl-ticks { position: absolute; left: 0; right: 0; bottom: 0; height: 18px; }
+.sl-ticks span { position: absolute; transform: translateX(-50%); font-size: 13px; font-weight: 700; color: var(--mute); white-space: nowrap; }
+.sl-bar { display: flex; gap: 2px; height: 16px; border-radius: 8px; overflow: hidden; }
+.sl-trend { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+/* .bars from the price charts is absolutely positioned; not here */
+.sl-nights, .sl-nights.bars { position: relative; inset: auto; display: flex; align-items: flex-end; gap: 4px; height: 48px; flex: none; }
+.sl-nights.bars i { flex: 1; min-width: 0; border-radius: 4px 4px 2px 2px; background: rgb(var(--c-rgb) / .35); }
+.sl-nights.bars i.is-last { background: var(--c); }
+.sl-nights.bars i.is-gap { flex: 1; height: 4px; background: var(--line); }
+
 /* ---------- kitchen timer (optional/timer, timer.js): dial on the left, controls on the right; its own layer over everything */
 .ced.dv.tm { width: min(1120px, calc(100vw - 48px)); padding: 0; }
 .tm-wrap { padding: 24px; }
@@ -1023,6 +1090,16 @@ ha-card { font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: a
   .wxs-hsky { padding: 0 18px 4px; }
   .wxs-cols { grid-template-columns: minmax(0, 1fr); gap: 22px; }
   .wxs-days li { grid-template-columns: 92px 24px 44px 30px minmax(20px, 1fr) 30px; gap: 6px; font-size: 16px; }
+  /* health window */
+  .ced.ced--person { width: 100%; max-height: 100%; border-top-width: 0; box-shadow: inset 0 10px 0 var(--c); }
+  .pp-tiles { grid-template-columns: repeat(var(--n2, 2), minmax(0, 1fr)); }
+  .act { flex-direction: column; align-items: flex-start; gap: 14px; padding: 14px 16px; }
+  .ar-legend { align-self: stretch; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 12px; }
+  .ar-steps { grid-column: 1 / -1; margin-top: 8px; }
+  .ar-row > b, .pp-m > b { font-size: 28px; }
+  .ar-row:not(.ar-steps) > b { font-size: 24px; white-space: normal; }
+  .ar-row:not(.ar-steps) > b small { display: block; margin-left: 0; font-size: 14px; }
+  .sl-legend { grid-template-columns: repeat(2, auto); }
   /* room window */
   .ced.ced--room { width: 100%; }
   .rl-list { grid-template-columns: minmax(0, 1fr); }

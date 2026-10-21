@@ -1,0 +1,169 @@
+# Health data from Apple Health for Frame's health window (optional/health), sent by the iPhone app
+# "Health Auto Export" (an automation of the type "REST API" per iPhone, every 1-2 hours). See optional/health/README.md.
+#
+# One block per person: each iPhone sends to its own webhook, because the JSON doesn't say whose data it is.
+# For another person copy the whole block from "- triggers:" down, then replace "alex" / "Alex" and the webhook id.
+# Make the webhook id long and random, it's the only thing that protects the data: anyone who knows it can send values.
+# When a metric is missing from an upload, its sensor keeps its last value.
+# The JSON is unpacked by custom_templates/frame_health.jinja (copied by ./install.sh health).
+template:
+  - triggers:
+      - trigger: webhook
+        webhook_id: frame-health-alex-CHANGE-ME-to-something-long-and-random
+        allowed_methods: [POST]
+        # the iPhone sends from wherever it is, not only from home
+        local_only: false
+    sensor:
+      # when the last upload arrived (the window shows it; it's also how to check the app reaches Home Assistant)
+      - name: Alex Health export
+        unique_id: frame_health_alex_export
+        icon: mdi:cellphone-arrow-down
+        device_class: timestamp
+        state: "{{ now().isoformat() }}"
+        attributes:
+          metrics: "{{ (((trigger.json or {}).data or {}).metrics or []) | map(attribute='name') | list }}"
+      - name: Alex Steps
+        unique_id: frame_health_alex_steps
+        icon: mdi:shoe-print
+        unit_of_measurement: steps
+        state_class: total_increasing
+        state: >
+          {% from 'frame_health.jinja' import hae_value %}
+          {% set v = hae_value(trigger.json, ['step_count'], 'qty') %}
+          {{ v | float | round(0) if v | is_number else (this.state if this.state | is_number else none) }}
+      - name: Alex Resting heart rate
+        unique_id: frame_health_alex_resting_heart_rate
+        icon: mdi:heart-pulse
+        unit_of_measurement: bpm
+        state_class: measurement
+        state: >
+          {% from 'frame_health.jinja' import hae_value %}
+          {% set v = hae_value(trigger.json, ['resting_heart_rate'], 'qty') %}
+          {{ v | float | round(0) if v | is_number else (this.state if this.state | is_number else none) }}
+      # HRV: the day's average; min/max only from single values (summarised, the app sends only the average for HRV).
+      # Without single values min/max keep their last state.
+      - name: Alex HRV
+        unique_id: frame_health_alex_hrv
+        icon: mdi:heart-flash
+        unit_of_measurement: ms
+        state_class: measurement
+        state: >
+          {% from 'frame_health.jinja' import hae_today %}
+          {% set t = hae_today(trigger.json, ['heart_rate_variability'], 'qty').split(';') %}
+          {{ t[3] | float | round(1) if t | count == 4 else (this.state if this.state | is_number else none) }}
+      - name: Alex HRV min
+        unique_id: frame_health_alex_hrv_min
+        icon: mdi:heart-flash
+        unit_of_measurement: ms
+        state_class: measurement
+        state: >
+          {% from 'frame_health.jinja' import hae_today %}
+          {% set t = hae_today(trigger.json, ['heart_rate_variability'], 'qty').split(';') %}
+          {{ t[1] | float | round(1) if t | count == 4 and t[0] | int > 1 else (this.state if this.state | is_number else none) }}
+      - name: Alex HRV max
+        unique_id: frame_health_alex_hrv_max
+        icon: mdi:heart-flash
+        unit_of_measurement: ms
+        state_class: measurement
+        state: >
+          {% from 'frame_health.jinja' import hae_today %}
+          {% set t = hae_today(trigger.json, ['heart_rate_variability'], 'qty').split(';') %}
+          {{ t[2] | float | round(1) if t | count == 4 and t[0] | int > 1 else (this.state if this.state | is_number else none) }}
+      # Activity rings (today's values, counting up over the day). The app sends active energy in kJ or kcal,
+      # depending on its settings; here always kcal. The ring goals are set in the household settings (health:).
+      - name: Alex Move
+        unique_id: frame_health_alex_move
+        icon: mdi:fire
+        unit_of_measurement: kcal
+        state_class: total_increasing
+        state: >
+          {% from 'frame_health.jinja' import hae_value %}
+          {% set m = (((trigger.json or {}).data or {}).metrics or []) | selectattr('name', 'eq', 'active_energy') | list %}
+          {% set f = (1 / 4.184) if m and m[0].units == 'kJ' else 1 %}
+          {% set v = hae_value(trigger.json, ['active_energy'], 'qty') %}
+          {{ (v | float * f) | round(0) if v | is_number else (this.state if this.state | is_number else none) }}
+      - name: Alex Exercise
+        unique_id: frame_health_alex_exercise
+        icon: mdi:run-fast
+        unit_of_measurement: min
+        state_class: total_increasing
+        state: >
+          {% from 'frame_health.jinja' import hae_value %}
+          {% set v = hae_value(trigger.json, ['apple_exercise_time'], 'qty') %}
+          {{ v | float | round(0) if v | is_number else (this.state if this.state | is_number else none) }}
+      - name: Alex Stand
+        unique_id: frame_health_alex_stand
+        icon: mdi:human-handsup
+        unit_of_measurement: h
+        state_class: total_increasing
+        state: >
+          {% from 'frame_health.jinja' import hae_value %}
+          {% set v = hae_value(trigger.json, ['apple_stand_hour'], 'qty') %}
+          {{ v | float | round(0) if v | is_number else (this.state if this.state | is_number else none) }}
+      # Heart rate of the day: average, lowest and highest (for the day's span in the window)
+      - name: Alex Heart rate
+        unique_id: frame_health_alex_heart_rate
+        icon: mdi:heart-pulse
+        unit_of_measurement: bpm
+        state_class: measurement
+        state: >
+          {% from 'frame_health.jinja' import hae_value %}
+          {% set v = hae_value(trigger.json, ['heart_rate'], 'Avg') %}
+          {{ v | float | round(0) if v | is_number else (this.state if this.state | is_number else none) }}
+      - name: Alex Heart rate min
+        unique_id: frame_health_alex_heart_rate_min
+        icon: mdi:heart-pulse
+        unit_of_measurement: bpm
+        state_class: measurement
+        state: >
+          {% from 'frame_health.jinja' import hae_value %}
+          {% set v = hae_value(trigger.json, ['heart_rate'], 'Min') %}
+          {{ v | float | round(0) if v | is_number else (this.state if this.state | is_number else none) }}
+      - name: Alex Heart rate max
+        unique_id: frame_health_alex_heart_rate_max
+        icon: mdi:heart-pulse
+        unit_of_measurement: bpm
+        state_class: measurement
+        state: >
+          {% from 'frame_health.jinja' import hae_value %}
+          {% set v = hae_value(trigger.json, ['heart_rate'], 'Max') %}
+          {{ v | float | round(0) if v | is_number else (this.state if this.state | is_number else none) }}
+      # Sleep needs a watch at night (or another sleep tracker that writes to Apple Health)
+      - name: Alex Sleep
+        unique_id: frame_health_alex_sleep
+        icon: mdi:sleep
+        unit_of_measurement: h
+        state_class: measurement
+        device_class: duration
+        state: >
+          {% from 'frame_health.jinja' import hae_value %}
+          {% set v = hae_value(trigger.json, ['sleep_analysis'], 'totalSleep') %}
+          {{ v | float | round(2) if v | is_number else (this.state if this.state | is_number else none) }}
+        attributes:
+          deep: >
+            {% from 'frame_health.jinja' import hae_value %}
+            {{ hae_value(trigger.json, ['sleep_analysis'], 'deep') or this.attributes.get('deep') }}
+          rem: >
+            {% from 'frame_health.jinja' import hae_value %}
+            {{ hae_value(trigger.json, ['sleep_analysis'], 'rem') or this.attributes.get('rem') }}
+          core: >
+            {% from 'frame_health.jinja' import hae_value %}
+            {{ hae_value(trigger.json, ['sleep_analysis'], 'core') or this.attributes.get('core') }}
+          awake: >
+            {% from 'frame_health.jinja' import hae_value %}
+            {{ hae_value(trigger.json, ['sleep_analysis'], 'awake') or this.attributes.get('awake') }}
+          asleep: >
+            {% from 'frame_health.jinja' import hae_value %}
+            {{ hae_value(trigger.json, ['sleep_analysis'], 'sleepStart') or this.attributes.get('asleep') }}
+          woke: >
+            {% from 'frame_health.jinja' import hae_value %}
+            {{ hae_value(trigger.json, ['sleep_analysis'], 'sleepEnd') or this.attributes.get('woke') }}
+          # Single stages for the night's curve in the window. They come from a second automation in the app:
+          # only Sleep Analysis, "Summarize data" off, date range "Today" (the app counts a night to the day it
+          # ends on). An older night never replaces a newer one.
+          phases: >
+            {% from 'frame_health.jinja' import hae_sleep_phases %}
+            {% set raw = hae_sleep_phases(trigger.json) %}
+            {% set new = raw | from_json if raw else [] %}
+            {% set old = this.attributes.get('phases') or [] %}
+            {{ new if new and (not old or new[-1][1] >= old[-1][1]) else (old or none) }}

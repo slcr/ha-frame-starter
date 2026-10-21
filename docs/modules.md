@@ -35,6 +35,7 @@ Set these once in `templates/frame.yaml`:
 | `flights` | Switches on [optional/flights](../optional/flights/) |
 | `timer` | Switches on [optional/timer](../optional/timer/) |
 | `scenes` | Switches on [optional/scenes](../optional/scenes/) |
+| `health` | Sensors per person for [optional/health](../optional/health/): tapping someone in `frame_people` opens their health window |
 
 ## Today
 
@@ -69,7 +70,7 @@ Current temperature and condition, today's high/low, "feels like", six 2-hour sl
 | `entity` | `weather` from `frame` | Any weather entity |
 
 ### `frame_people`
-Everyone in `people` with a `person` entity. People who are away get a ring avatar and their zone. No options.
+Everyone in `people` with a `person` entity. People who are away get a ring avatar and their zone. No options. With [optional/health](../optional/health/), tapping someone with sensors under `health:` opens their health window.
 
 ### `frame_next`
 The next timed event from `calendars`, in its person's colour, with a countdown: minutes until it starts (under 100), the start time otherwise, or minutes left while it runs. Today's all-day events appear as chips at the bottom. No options.
