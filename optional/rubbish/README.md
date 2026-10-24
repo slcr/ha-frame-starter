@@ -22,7 +22,8 @@ The next pickups from a calendar, each day with a painted bin. On the evening be
 | Variable | Default | |
 | --- | --- | --- |
 | `calendar` | `calendar.waste_collection` | |
-| `bins` | general, recycling, paper, garden, hazardous | `[{match, label, color, img?, icon?, out?}]`. `match` is text in the event title (any case); `img` a picture (bins in `www/frame/bins`: grey, yellow, blue, green, hazardous), else `icon` or a drawn bin in `color`; `out: false` for things you don't put out. |
+| `bins` | | Your own bins, `[{match, label, color, img?, icon?, out?}]`. `match` is text in the event title (any case); `img` a picture (bins in `www/frame/bins`: grey, yellow, blue, green, hazardous), else `icon` or a drawn bin in `color`; `out: false` for things you don't put out. Checked before `default_bins`, so an entry with the same `match` replaces the default. |
+| `default_bins` | general, recycling, paper, garden, hazardous | The built-in bins, same format. Edit them in the template; a list on the card is added to these, not used instead. |
 | `groups` | 2 | How many pickup days to show |
 | `days` | 21 | How far ahead to look |
 | `out_until` | 8 | A pickup counts until this hour on its day |

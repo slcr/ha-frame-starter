@@ -19,7 +19,9 @@ frame_bins:
     title: ""
     # match: text in the event title (case-insensitive); img: picture in www/frame/bins (or icon, or just a colour)
     # out: false for things you don't put out (e.g. a hazardous waste truck)
-    bins:
+    # bins on a card are checked before default_bins (button-card joins lists, so a card can't replace them)
+    bins: []
+    default_bins:
       - match: general
         label: General waste
         color: "#5B5F66"
@@ -59,7 +61,7 @@ frame_bins:
         if (!groups.length) return `<div class="blk"><div class="label">${fx.esc(title)}</div><div class="free"><i>${T('bins_none', 'No pickup')}</i> ${T('bins_none_sub', 'coming up')}</div></div>`;
         const diff = (d) => Math.round((d - t0) / 864e5);
         const when = (d) => { const n = diff(d); return n === 0 ? fx.t('today') : n === 1 ? fx.t('tomorrow') : `${fx.weekday(d)} · ${T('bins_in', 'in {0} days').replace('{0}', n)}`; };
-        const kind = (title) => variables.bins.find((b) => title.toLowerCase().includes(String(b.match).toLowerCase())) || { label: title, color: '#7A756B' };
+        const kind = (title) => [...(variables.bins || []), ...(variables.default_bins || [])].find((b) => title.toLowerCase().includes(String(b.match).toLowerCase())) || { label: title, color: '#7A756B' };
         const bin = (k) => (k.img ? `<img class="tonne" src="${fx.esc(k.img)}" alt="">`
           : k.icon ? `<ha-icon class="tonne" icon="${k.icon}" style="color:${k.color}"></ha-icon>`
           : `<svg class="tonne" viewBox="0 0 24 30" aria-hidden="true"><rect x="9" y="0.5" width="6" height="2.5" rx="1.2" fill="${k.color}"/>
