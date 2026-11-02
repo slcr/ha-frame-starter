@@ -26,8 +26,11 @@ done
 echo "✓ core"
 
 for m in "$@"; do
+  # some web terminals (HA's SSH add-on) leave a stray ~ from bracketed paste at the end of the line
+  m="${m%\~}"
+  [ -n "$m" ] || continue
   d="$HERE/optional/$m"
-  [ -d "$d" ] || { echo "✗ no optional module '$m' (have: $(ls "$HERE/optional" | tr '\n' ' '))"; continue; }
+  [ -d "$d" ] || { echo "✗ no optional module '$m' (have: $(cd "$HERE/optional" && ls -d */ | tr -d / | tr '\n' ' '))"; continue; }
   [ -d "$d/www/frame" ] && cp -R "$d/www/frame/." "$CONFIG/www/frame/"
   [ -d "$d/dashboard/templates" ] && cp "$d/dashboard/templates/"*.yaml "$CONFIG/frame/templates/"
   # Home Assistant packages (helpers, automations): replaced like code; needs `packages:` in configuration.yaml
